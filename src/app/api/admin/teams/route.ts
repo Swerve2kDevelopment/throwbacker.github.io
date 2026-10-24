@@ -1,0 +1,18 @@
+import { createTeam } from "@/lib/mutations";
+import { apiError, guardAdminRequest, jsonSuccess, parseJson } from "@/lib/api";
+import { teamSchema } from "@/lib/validators";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(request: Request) {
+  const blocked = await guardAdminRequest(request);
+  if (blocked) return blocked;
+
+  try {
+    const input = await parseJson(request, teamSchema);
+    const team = await createTeam(input);
+    return jsonSuccess(team, 201);
+  } catch (error) {
+    return apiError(error);
+  }
+}

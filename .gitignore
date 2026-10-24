@@ -1,0 +1,9 @@
+node_modules
+.next
+.netlify
+.env
+.env*.local
+database.env
+coverage
+dist
+*.tsbuildinfo
