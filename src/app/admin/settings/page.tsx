@@ -14,7 +14,7 @@ import {
 import { formatDate } from "@/lib/format";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { SETTING_KEYS, getSiteSetting } from "@/lib/site-settings";
+import { SETTING_KEYS, getSiteSettings } from "@/lib/site-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +37,8 @@ export default async function AdminSettingsPage({
   await assertAdminUser();
 
   const resolvedSearchParams = await searchParams;
-  const [discordWebhookUrl, operators, players, playerOfWeeks, avatarRows] = await Promise.all([
-    getSiteSetting(SETTING_KEYS.discordWebhookUrl),
+  const [settings, operators, players, playerOfWeeks, avatarRows] = await Promise.all([
+    getSiteSettings(Object.values(SETTING_KEYS)),
     prisma.operatorIcon.findMany({ orderBy: { name: "asc" } }),
     prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
     prisma.playerOfWeek.findMany({
@@ -60,13 +60,23 @@ export default async function AdminSettingsPage({
     { file: 0, db: 0, remote: 0, none: 0 }
   );
   const hasBotToken = Boolean(process.env.DISCORD_BOT_TOKEN);
+  const discordWebhookUrl = settings[SETTING_KEYS.discordWebhookUrl];
+  const pingRoleId = settings[SETTING_KEYS.discordPingRoleId];
+  const pingToggles = [
+    { name: "pingOnMatches", key: SETTING_KEYS.pingOnMatches, label: "New match stats" },
+    { name: "pingOnRecruitment", key: SETTING_KEYS.pingOnRecruitment, label: "Teams looking for a player" },
+    { name: "pingOnSignings", key: SETTING_KEYS.pingOnSignings, label: "Teams looking to sign a player" }
+  ];
 
   return (
     <div className="grid gap-5">
       <AdminStatusBanner searchParams={resolvedSearchParams} />
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <AdminForm title="Discord announcements" description="New match stats post here with players, map, K/D/A and the result. Mentions are always disabled.">
+        <AdminForm
+          title="Discord announcements"
+          description="Match stats, recruitment posts and signing requests post here. Only the role below can ever be pinged; @everyone and @here are always blocked."
+        >
           <form action={updateSiteSettingsAction} className="grid gap-3">
             <Field label="Webhook URL">
               <input className="input" name="discordWebhookUrl" type="url" defaultValue={discordWebhookUrl} placeholder="https://discord.com/api/webhooks/..." autoComplete="off" />
@@ -80,13 +90,33 @@ export default async function AdminSettingsPage({
                 "Not set. Channel settings → Integrations → Webhooks → New Webhook → Copy URL."
               )}
             </span>
-            <div className="flex flex-wrap gap-2">
+            <Field label="Role to ping (optional)">
+              <input className="input" name="discordPingRoleId" defaultValue={pingRoleId} placeholder="e.g. 1234567890123456789" inputMode="numeric" autoComplete="off" />
+            </Field>
+            <span className="form-hint">
+              In Discord: turn on Developer Mode (User Settings → Advanced), then Server Settings → Roles → right-click the role → Copy Role ID. The webhook can only ping a
+              role that is set to &quot;Allow anyone to @mention this role&quot;.
+            </span>
+            <div className="grid gap-2">
+              <span className="label">Ping the role for</span>
+              {pingToggles.map((toggle) => (
+                <label key={toggle.name} className="check-row">
+                  <input type="checkbox" name={toggle.name} defaultChecked={settings[toggle.key] === "true"} />
+                  {toggle.label}
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
               <button className="button button-primary" type="submit">
-                Save webhook
+                Save announcements
               </button>
               <button className="button" type="submit" formAction={testDiscordWebhookAction}>
                 Send test message
               </button>
+              <label className="check-row">
+                <input type="checkbox" name="pingTest" />
+                Ping the role in the test
+              </label>
             </div>
           </form>
         </AdminForm>

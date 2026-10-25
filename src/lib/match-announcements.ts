@@ -92,7 +92,7 @@ export async function announceMatchStats(matchId: string, kind: "new" | "updated
   try {
     const embed = await buildMatchAnnouncement(matchId, kind);
     if (!embed) return { sent: false as const, reason: "No stats on this match yet." };
-    const sent = await sendDiscordWebhook({ embeds: [embed] });
+    const sent = await sendDiscordWebhook({ embeds: [embed] }, { event: "match" });
     return sent ? { sent: true as const } : { sent: false as const, reason: "No webhook configured." };
   } catch (error) {
     return { sent: false as const, reason: error instanceof Error ? error.message : "Webhook failed." };

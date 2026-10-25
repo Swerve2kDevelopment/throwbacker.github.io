@@ -219,7 +219,23 @@ export const statSchema = z.object({
 export const siteSettingsSchema = z.object({
   discordWebhookUrl: nullableString.refine((value) => !value || isDiscordWebhookUrl(value), {
     message: "Webhook URL must look like https://discord.com/api/webhooks/<id>/<token>."
-  })
+  }),
+  discordPingRoleId: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim().replace(/^<@&(\d+)>$/, "$1") : value),
+    nullableString.refine((value) => !value || /^\d{17,20}$/.test(value), {
+      message: "Role ID must be the 17-20 digit number from Discord (right-click the role → Copy Role ID)."
+    })
+  ),
+  pingOnMatches: checkbox,
+  pingOnRecruitment: checkbox,
+  pingOnSignings: checkbox
+});
+
+export const RECRUITMENT_ROLES = ["Entry Fragger", "Support", "Flex", "IGL", "Anchor", "Roamer", "Hard Breacher", "Substitute"] as const;
+
+export const recruitmentPostSchema = z.object({
+  role: z.preprocess(emptyToNull, z.enum(RECRUITMENT_ROLES).nullable().optional()),
+  note: z.preprocess(emptyToNull, z.string().trim().max(400, "Keep the note under 400 characters.").nullable().optional())
 });
 
 export const bracketPlacementSchema = z.object({

@@ -158,27 +158,42 @@ model Player {
 }
 
 model Team {
-  id               String            @id @default(cuid())
-  slug             String            @unique
+  id               String                @id @default(cuid())
+  slug             String                @unique
   name             String
   tag              String?
   logoUrl          String?
   themeColor       String?
   region           String?
   description      String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  currentPlayers   Player[]          @relation("PlayerCurrentTeam")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  currentPlayers   Player[]              @relation("PlayerCurrentTeam")
   memberships      TeamMembership[]
   tournamentTeams  TournamentTeam[]
   managers         TeamManager[]
   transferRequests TransferRequest[]
   transferEvents   TransferEvent[]
-  teamAMatches     Match[]           @relation("TeamAMatches")
-  teamBMatches     Match[]           @relation("TeamBMatches")
-  matchWins        Match[]           @relation("MatchWinner")
-  mapWins          MapGame[]         @relation("MapWinner")
+  teamAMatches     Match[]               @relation("TeamAMatches")
+  teamBMatches     Match[]               @relation("TeamBMatches")
+  matchWins        Match[]               @relation("MatchWinner")
+  mapWins          MapGame[]             @relation("MapWinner")
   stats            PlayerMapStats[]
+  recruitmentPosts TeamRecruitmentPost[]
+}
+
+/// A team manager's public "looking for a player" post.
+model TeamRecruitmentPost {
+  id        String    @id @default(cuid())
+  teamId    String
+  role      String?
+  note      String?
+  postedBy  String?
+  createdAt DateTime  @default(now())
+  closedAt  DateTime?
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, closedAt])
 }
 
 model TeamMembership {

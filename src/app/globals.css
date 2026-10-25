@@ -3019,3 +3019,11 @@ a.bracket-match:hover {
   font-weight: 760;
   white-space: normal;
 }
+
+.recruit-banner {
+  border: 1px solid rgba(var(--team-accent-rgb, var(--accent-rgb)), 0.45);
+  border-left: 3px solid rgb(var(--team-accent-rgb, var(--accent-rgb)));
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(var(--team-accent-rgb, var(--accent-rgb)), 0.12), transparent 70%), var(--surface);
+  padding: 14px 16px;
+}

@@ -5,7 +5,15 @@ import { redirect } from "next/navigation";
 import { AuthButton } from "@/components/ui/AuthButton";
 import { getAuthSession } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { benchPlayerAction, releasePlayerAction, respondTransferRequestAction, sendTransferRequestAction } from "@/lib/viewer-actions";
+import { RECRUITMENT_ROLES } from "@/lib/validators";
+import {
+  benchPlayerAction,
+  closeRecruitmentPostAction,
+  createRecruitmentPostAction,
+  releasePlayerAction,
+  respondTransferRequestAction,
+  sendTransferRequestAction
+} from "@/lib/viewer-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +21,7 @@ export const metadata: Metadata = {
   title: "Account"
 };
 
-export default async function AccountPage({ searchParams }: { searchParams: Promise<{ admin?: string; transfer?: string }> }) {
+export default async function AccountPage({ searchParams }: { searchParams: Promise<{ admin?: string; transfer?: string; recruit?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const session = await getAuthSession();
   if (!session?.user?.id) redirect("/login?callbackUrl=/account");
@@ -48,6 +56,10 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                   include: { player: true },
                   orderBy: { createdAt: "desc" },
                   take: 8
+                },
+                recruitmentPosts: {
+                  where: { closedAt: null },
+                  orderBy: { createdAt: "desc" }
                 }
               }
             }
@@ -81,6 +93,16 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
       {resolvedSearchParams.admin === "denied" ? (
         <div className="mb-4 border border-red-900 bg-red-950/40 p-3 text-sm font-bold text-red-100">
           Your Discord account is signed in, but it has not been approved for admin access.
+        </div>
+      ) : null}
+      {resolvedSearchParams.recruit ? (
+        <div className="notice-banner">
+          {{
+            posted: "Recruitment post published and announced on Discord.",
+            "posted-not-announced": "Recruitment post published. It wasn't announced on Discord (no webhook set, or Discord rejected it).",
+            "already-open": "You already have an open post for that role. Close it first to post again.",
+            closed: "Recruitment post closed."
+          }[resolvedSearchParams.recruit] || `Recruitment: ${decodeURIComponent(resolvedSearchParams.recruit)}`}
         </div>
       ) : null}
       {resolvedSearchParams.transfer ? (
@@ -210,6 +232,49 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                           )}
                         </tbody>
                       </table>
+                    </div>
+
+                    <div className="form-section mt-4">
+                      <h3>Looking for a player</h3>
+                      <form action={createRecruitmentPostAction.bind(null, team.id)} className="grid gap-2 md:grid-cols-[200px_1fr_auto] md:items-end">
+                        <label className="grid gap-1">
+                          <span className="label">Role</span>
+                          <select className="input" name="role" defaultValue="">
+                            <option value="">Any role</option>
+                            {RECRUITMENT_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="grid gap-1">
+                          <span className="label">Note (optional, public)</span>
+                          <input className="input" name="note" maxLength={400} placeholder="e.g. EU evenings, 5v5 league nights, DM the manager" />
+                        </label>
+                        <button className="button button-primary" type="submit">
+                          Post &amp; announce
+                        </button>
+                      </form>
+                      <span className="form-hint">Shows on your team page and the Teams page, and posts to the league Discord.</span>
+                      {team.recruitmentPosts.length ? (
+                        <div className="grid gap-2">
+                          {team.recruitmentPosts.map((post) => (
+                            <div key={post.id} className="feed-row" style={{ gridTemplateColumns: "minmax(0,1fr) auto auto" }}>
+                              <span>
+                                Looking for: {post.role || "Any role"}
+                                {post.note ? <span className="ml-2 font-semibold text-metal-muted">{post.note}</span> : null}
+                              </span>
+                              <em>{post.createdAt.toLocaleDateString("en-GB")}</em>
+                              <form action={closeRecruitmentPostAction.bind(null, post.id)}>
+                                <button className="button" type="submit">
+                                  Close
+                                </button>
+                              </form>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
 
                     {team.transferRequests.length ? (

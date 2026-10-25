@@ -8,6 +8,8 @@ import { getAuthSession } from "@/lib/permissions";
 import { sendDiscordDm } from "@/lib/discord-bot";
 import { syncPlayerCurrentTeam } from "@/lib/mutations";
 import { prisma } from "@/lib/prisma";
+import { announceRecruitmentPost, announceSigningRequest } from "@/lib/team-announcements";
+import { recruitmentPostSchema } from "@/lib/validators";
 
 async function requireTeamManager(teamId: string) {
   const session = await getAuthSession();
@@ -144,6 +146,8 @@ export async function sendTransferRequestAction(teamId: string, formData: FormDa
     }
   }
 
+  await announceSigningRequest(manager.team, player);
+
   refreshTransfers(manager.team.slug, player.slug);
   redirect("/account?transfer=requested");
 }
@@ -232,4 +236,40 @@ export async function benchPlayerAction(teamId: string, playerId: string) {
 
   refreshTransfers(manager.team.slug, player.slug);
   redirect("/account?transfer=benched");
+}
+
+export async function createRecruitmentPostAction(teamId: string, formData: FormData) {
+  const { session, manager } = await requireTeamManager(teamId);
+
+  const parsed = recruitmentPostSchema.safeParse({ role: formData.get("role"), note: formData.get("note") });
+  if (!parsed.success) redirect(`/account?recruit=${encodeURIComponent(parsed.error.issues[0]?.message || "invalid")}`);
+  const { role, note } = parsed.data;
+
+  // One open post per role keeps the channel from being spammed.
+  const duplicate = await prisma.teamRecruitmentPost.findFirst({
+    where: { teamId, closedAt: null, role: role ?? null },
+    select: { id: true }
+  });
+  if (duplicate) redirect("/account?recruit=already-open");
+
+  const postedBy = session.user.name || session.user.username || null;
+  await prisma.teamRecruitmentPost.create({
+    data: { teamId, role: role ?? null, note: note ?? null, postedBy }
+  });
+
+  const announcement = await announceRecruitmentPost(manager.team, { role: role ?? null, note: note ?? null, postedBy });
+
+  refreshTransfers(manager.team.slug);
+  redirect(`/account?recruit=${announcement.sent ? "posted" : "posted-not-announced"}`);
+}
+
+export async function closeRecruitmentPostAction(postId: string) {
+  const post = await prisma.teamRecruitmentPost.findUnique({ where: { id: postId }, select: { teamId: true } });
+  if (!post) redirect("/account?recruit=invalid");
+
+  const { manager } = await requireTeamManager(post.teamId);
+  await prisma.teamRecruitmentPost.update({ where: { id: postId }, data: { closedAt: new Date() } });
+
+  refreshTransfers(manager.team.slug);
+  redirect("/account?recruit=closed");
 }

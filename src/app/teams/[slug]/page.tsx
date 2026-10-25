@@ -87,6 +87,10 @@ export default async function TeamProfilePage({ params }: { params: Promise<{ sl
         include: { player: true },
         orderBy: [{ isCurrent: "desc" }, { startDate: "desc" }]
       },
+      recruitmentPosts: {
+        where: { closedAt: null },
+        orderBy: { createdAt: "desc" }
+      },
       tournamentTeams: {
         include: { tournament: true },
         orderBy: { finalPlacement: "asc" }
@@ -200,6 +204,21 @@ export default async function TeamProfilePage({ params }: { params: Promise<{ sl
           )}
         </div>
       </section>
+
+      {team.recruitmentPosts.length ? (
+        <section className="recruit-banner mt-5" style={themedStyle(themeColor)}>
+          <p className="eyebrow">Recruiting</p>
+          <div className="mt-2 grid gap-2">
+            {team.recruitmentPosts.map((post) => (
+              <div key={post.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <strong className="text-lg text-metal-text">Looking for: {post.role || "any role"}</strong>
+                {post.note ? <span className="font-semibold text-metal-muted">{post.note}</span> : null}
+                <span className="label">since {formatDate(post.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]" style={themedStyle(themeColor)}>
         <div className="min-w-0">

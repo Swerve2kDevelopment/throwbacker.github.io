@@ -4,6 +4,7 @@ import { TransferRequestStatus } from "@prisma/client";
 
 import { TeamCard } from "@/components/TeamCard";
 import { SearchInput } from "@/components/ui/SearchInput";
+import { TeamLogo } from "@/components/ui/TeamLogo";
 import { formatDateTime } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 export default async function TeamsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const q = resolvedSearchParams.q?.trim().toLowerCase() || "";
-  const [teams, transferEvents, transferRequests] = await Promise.all([
+  const [teams, transferEvents, transferRequests, recruitmentPosts] = await Promise.all([
     prisma.team.findMany({
     include: {
       currentPlayers: {
@@ -43,6 +44,11 @@ export default async function TeamsPage({ searchParams }: { searchParams: Promis
       },
       orderBy: { createdAt: "desc" },
       take: 12
+    }),
+    prisma.teamRecruitmentPost.findMany({
+      where: { closedAt: null },
+      include: { team: true },
+      orderBy: { createdAt: "desc" }
     })
   ]);
 
@@ -90,6 +96,28 @@ export default async function TeamsPage({ searchParams }: { searchParams: Promis
         </div>
         <SearchInput defaultValue={resolvedSearchParams.q} placeholder="Search teams or players" action="/teams" />
       </div>
+
+      {recruitmentPosts.length ? (
+        <section className="mb-6">
+          <div className="section-heading">
+            <h2>Recruiting Now</h2>
+            <span className="label">{recruitmentPosts.length} open</span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {recruitmentPosts.map((post) => (
+              <Link key={post.id} href={`/teams/${post.team.slug}`} className="moment-card">
+                <TeamLogo team={post.team} className="team-logo h-9 w-9" />
+                <div>
+                  <strong>
+                    {post.team.name} · {post.role || "Any role"}
+                  </strong>
+                  <span>{post.note || `Posted ${formatDateTime(post.createdAt)}`}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.length ? filtered.map((team) => <TeamCard key={team.id} team={team} />) : <div className="subtle-panel p-5 text-metal-muted">No teams added yet.</div>}

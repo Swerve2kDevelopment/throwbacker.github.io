@@ -500,6 +500,10 @@ export async function updateSiteSettingsAction(formData: FormData) {
   try {
     const input = siteSettingsSchema.parse(formDataToObject(formData));
     await setSiteSetting(SETTING_KEYS.discordWebhookUrl, input.discordWebhookUrl || null);
+    await setSiteSetting(SETTING_KEYS.discordPingRoleId, input.discordPingRoleId || null);
+    await setSiteSetting(SETTING_KEYS.pingOnMatches, String(input.pingOnMatches));
+    await setSiteSetting(SETTING_KEYS.pingOnRecruitment, String(input.pingOnRecruitment));
+    await setSiteSetting(SETTING_KEYS.pingOnSignings, String(input.pingOnSignings));
     refreshAll();
   } catch (error) {
     target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
@@ -529,9 +533,9 @@ export async function testDiscordWebhookAction(formData: FormData) {
           }
         ]
       },
-      parsed.discordWebhookUrl
+      { webhookUrlOverride: parsed.discordWebhookUrl, event: "test", forcePing: formData.get("pingTest") === "on" }
     );
-    target = withNotice(target, "Test message sent.");
+    target = withNotice(target, formData.get("pingTest") === "on" ? "Test message sent with the role ping." : "Test message sent.");
   } catch (error) {
     target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
   }
