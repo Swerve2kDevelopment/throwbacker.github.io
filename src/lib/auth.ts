@@ -43,6 +43,9 @@ export const authOptions: NextAuthOptions = {
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
       clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+      // Discord now returns ?iss= on the OAuth redirect (RFC 9207). openid-client
+      // rejects the callback unless the provider declares the matching issuer.
+      issuer: "https://discord.com",
       authorization: {
         params: {
           scope: "identify email"
