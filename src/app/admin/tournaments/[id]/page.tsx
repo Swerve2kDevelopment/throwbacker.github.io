@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { Bracket } from "@/components/Bracket";
 import { updateMatchBracketAction, updateTournamentAction, updateTournamentPlacementsAction } from "@/lib/admin-actions";
 import { buildEliminationBracket } from "@/lib/bracket";
@@ -113,10 +114,12 @@ export default async function AdminEditTournamentPage({
               <input className="input" type="date" name="endDate" defaultValue={dateInput(tournament.endDate)} />
             </Field>
           </div>
-          <Field label="Logo URL">
+          <ImageUploadField label="Replace logo" name="logoFile" currentUrl={tournament.logoUrl} />
+          <Field label="…or logo URL">
             <input className="input" name="logoUrl" defaultValue={tournament.logoUrl || ""} />
           </Field>
-          <Field label="Banner URL">
+          <ImageUploadField label="Replace banner" name="bannerFile" currentUrl={tournament.bannerUrl} hint="Wide image for the top of the tournament page. Up to 4 MB." />
+          <Field label="…or banner URL">
             <input className="input" name="bannerUrl" defaultValue={tournament.bannerUrl || ""} />
           </Field>
           <Field label="Tournament MVP">

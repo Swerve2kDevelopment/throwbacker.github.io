@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { updateTeamAction, updateTeamManagersAction } from "@/lib/admin-actions";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -44,8 +45,9 @@ export default async function AdminEditTeamPage({
               <input className="input" name="region" defaultValue={team.region || ""} />
             </Field>
           </div>
+          <ImageUploadField label="Replace logo" name="logoFile" currentUrl={team.logoUrl} />
           <div className="grid gap-3 md:grid-cols-[1fr_120px]">
-            <Field label="Logo URL">
+            <Field label="…or logo URL">
               <input className="input" name="logoUrl" defaultValue={team.logoUrl || ""} />
             </Field>
             <Field label="Theme color">

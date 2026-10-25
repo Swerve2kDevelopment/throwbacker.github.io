@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BracketType, TournamentStatus } from "@prisma/client";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { createTournamentAction, deleteTournamentAction } from "@/lib/admin-actions";
 import { assertAdminUser } from "@/lib/permissions";
@@ -80,10 +81,12 @@ export default async function AdminTournamentsPage({
                 <input className="input" type="date" name="endDate" />
               </Field>
             </div>
-            <Field label="Logo URL">
+            <ImageUploadField label="Upload logo" name="logoFile" />
+            <Field label="…or logo URL">
               <input className="input" name="logoUrl" />
             </Field>
-            <Field label="Banner URL">
+            <ImageUploadField label="Upload banner" name="bannerFile" hint="Wide image for the top of the tournament page. Up to 4 MB." />
+            <Field label="…or banner URL">
               <input className="input" name="bannerUrl" />
             </Field>
             <Field label="Tournament MVP">

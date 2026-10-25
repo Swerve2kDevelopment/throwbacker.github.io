@@ -447,6 +447,22 @@ model PlayerAvatarImage {
   player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
+/// An image uploaded from the admin panel (logos, icons, banners, photos),
+/// stored in the database because the host can't save files at runtime.
+model UploadedImage {
+  id           String   @id @default(cuid())
+  kind         String
+  contentType  String
+  data         Bytes
+  width        Int
+  height       Int
+  bytes        Int
+  originalName String?
+  createdAt    DateTime @default(now())
+
+  @@index([kind])
+}
+
 model SiteSetting {
   key       String   @id
   value     String?

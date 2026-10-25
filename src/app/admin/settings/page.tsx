@@ -1,4 +1,5 @@
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import {
   bulkOperatorIconsAction,
@@ -8,7 +9,9 @@ import {
   importOperatorIconsAction,
   setPlayerOfWeekAction,
   testDiscordWebhookAction,
+  updateLeagueLogoAction,
   updateSiteSettingsAction,
+  uploadOperatorIconsAction,
   upsertOperatorIconAction
 } from "@/lib/admin-actions";
 import { formatDate } from "@/lib/format";
@@ -37,7 +40,7 @@ export default async function AdminSettingsPage({
   await assertAdminUser();
 
   const resolvedSearchParams = await searchParams;
-  const [settings, operators, players, playerOfWeeks, avatarRows] = await Promise.all([
+  const [settings, operators, players, playerOfWeeks, avatarRows, leagues] = await Promise.all([
     getSiteSettings(Object.values(SETTING_KEYS)),
     prisma.operatorIcon.findMany({ orderBy: { name: "asc" } }),
     prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
@@ -46,7 +49,8 @@ export default async function AdminSettingsPage({
       orderBy: { weekStart: "desc" },
       take: 12
     }),
-    prisma.player.findMany({ select: { avatarUrl: true, discordId: true } })
+    prisma.player.findMany({ select: { avatarUrl: true, discordId: true } }),
+    prisma.league.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, shortName: true, logoUrl: true } })
   ]);
 
   const avatarCounts = avatarRows.reduce(
@@ -212,19 +216,66 @@ export default async function AdminSettingsPage({
         </p>
       </AdminForm>
 
-      <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
-        <AdminForm title="Operator icons" description="Put PNGs in public/operator-icons, then map names to files.">
-          <div className="grid gap-4">
-            <form action={upsertOperatorIconAction} className="grid gap-3">
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Operator">
-                  <input className="input" name="name" placeholder="Thermite" required />
-                </Field>
-                <Field label="Icon path">
-                  <input className="input" name="iconPath" placeholder="/operator-icons/Thermite.png" />
-                </Field>
+      <AdminForm title="League logos" description="Shown on league pages and next to league games.">
+        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <form action={updateLeagueLogoAction} className="grid gap-3">
+            <Field label="League">
+              <select className="input" name="leagueId" required defaultValue={leagues[0]?.id || ""}>
+                {leagues.map((league) => (
+                  <option key={league.id} value={league.id}>
+                    {league.shortName || league.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <ImageUploadField label="New logo" name="logoFile" />
+            <button className="button button-primary w-fit" type="submit">
+              Upload league logo
+            </button>
+          </form>
+          <div className="grid content-start gap-2">
+            {leagues.map((league) => (
+              <div key={league.id} className="operator-ban-chip">
+                {league.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img alt="" src={league.logoUrl} />
+                ) : (
+                  <span>{(league.shortName || league.name).slice(0, 2)}</span>
+                )}
+                <span className="min-w-0">
+                  <strong style={{ textDecoration: "none" }}>{league.name}</strong>
+                  <em className="truncate">{league.logoUrl || "No logo"}</em>
+                </span>
               </div>
+            ))}
+          </div>
+        </div>
+      </AdminForm>
+
+      <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
+        <AdminForm title="Operator icons" description="Upload icons straight from your computer. They show on match pages next to operator bans.">
+          <div className="grid gap-4">
+            <form action={uploadOperatorIconsAction} className="grid gap-3">
+              <ImageUploadField
+                label="Upload several at once"
+                name="iconFiles"
+                multiple
+                hint="Each icon is named after its file: Thermite.png → Thermite, Jager.png → Jager. Re-uploading a name replaces its icon. Keep one batch under about 4 MB."
+              />
               <button className="button button-primary w-fit" type="submit">
+                Upload icons
+              </button>
+            </form>
+
+            <form action={upsertOperatorIconAction} className="form-section">
+              <Field label="Operator">
+                <input className="input" name="name" placeholder="Jäger" required />
+              </Field>
+              <ImageUploadField label="Icon" name="iconFile" hint="Use this when the name has accents or doesn't match the file name." />
+              <Field label="…or icon path">
+                <input className="input" name="iconPath" placeholder="/operator-icons/Thermite.png" />
+              </Field>
+              <button className="button w-fit" type="submit">
                 Save operator
               </button>
             </form>

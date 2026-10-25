@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { createPlayerBanAction, liftPlayerBanAction, refreshPlayerAvatarAction, syncPlayerDiscordProfileAction, updatePlayerAction } from "@/lib/admin-actions";
 import { formatDateTime } from "@/lib/format";
 import { assertAdminUser } from "@/lib/permissions";
@@ -86,7 +87,13 @@ export default async function AdminEditPlayerPage({
               </select>
             </Field>
           </div>
-          <Field label="Avatar URL">
+          <ImageUploadField
+            label="Upload photo"
+            name="photoFile"
+            currentUrl={player.avatarUrl}
+            hint="Cropped to a square. An uploaded photo isn't replaced by Discord refreshes or sign-ins; use Re-cache avatar below to switch back to Discord."
+          />
+          <Field label="…or avatar URL">
             <input className="input" name="avatarUrl" defaultValue={player.avatarUrl || ""} placeholder="Leave blank to fetch from Discord ID" />
           </Field>
           <Field label="Social links">

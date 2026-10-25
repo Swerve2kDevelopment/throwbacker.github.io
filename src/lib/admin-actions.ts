@@ -45,6 +45,7 @@ import { readdir } from "fs/promises";
 import path from "path";
 
 import { cachePlayerAvatar, refreshPlayerAvatar, type AvatarRefreshResult } from "@/lib/avatar-cache";
+import { deleteReplacedImage, formFiles, saveUploadedImage, uploadFromForm } from "@/lib/image-uploads";
 import { announceMatchStats } from "@/lib/match-announcements";
 import { OSCL_EMBED_COLOR, SETTING_KEYS, getSiteSetting, sendDiscordWebhook, setSiteSetting } from "@/lib/site-settings";
 
@@ -121,11 +122,30 @@ async function runDelete(action: () => Promise<unknown>, redirectPath: string) {
 }
 
 export async function createPlayerAction(formData: FormData) {
-  await runFormMutation(formData, playerSchema, createPlayer, "/admin/players");
+  await runFormMutation(
+    formData,
+    playerSchema,
+    async (input) => {
+      const photo = await uploadFromForm(formData, "photoFile", "player-photo");
+      return createPlayer(photo ? { ...input, avatarUrl: photo } : input);
+    },
+    "/admin/players"
+  );
 }
 
 export async function updatePlayerAction(id: string, formData: FormData) {
-  await runFormMutation(formData, playerSchema, (input) => updatePlayer(id, input), "/admin/players");
+  await runFormMutation(
+    formData,
+    playerSchema,
+    async (input) => {
+      const before = await prisma.player.findUnique({ where: { id }, select: { avatarUrl: true } });
+      const photo = await uploadFromForm(formData, "photoFile", "player-photo");
+      const player = await updatePlayer(id, photo ? { ...input, avatarUrl: photo } : input);
+      await deleteReplacedImage(before?.avatarUrl, player.avatarUrl);
+      return player;
+    },
+    "/admin/players"
+  );
 }
 
 export async function syncPlayerDiscordProfileAction(id: string) {
@@ -219,11 +239,30 @@ export async function deletePlayerAction(id: string) {
 }
 
 export async function createTeamAction(formData: FormData) {
-  await runFormMutation(formData, teamSchema, createTeam, "/admin/teams");
+  await runFormMutation(
+    formData,
+    teamSchema,
+    async (input) => {
+      const logo = await uploadFromForm(formData, "logoFile", "team-logo");
+      return createTeam(logo ? { ...input, logoUrl: logo } : input);
+    },
+    "/admin/teams"
+  );
 }
 
 export async function updateTeamAction(id: string, formData: FormData) {
-  await runFormMutation(formData, teamSchema, (input) => updateTeam(id, input), "/admin/teams");
+  await runFormMutation(
+    formData,
+    teamSchema,
+    async (input) => {
+      const before = await prisma.team.findUnique({ where: { id }, select: { logoUrl: true } });
+      const logo = await uploadFromForm(formData, "logoFile", "team-logo");
+      const team = await updateTeam(id, logo ? { ...input, logoUrl: logo } : input);
+      await deleteReplacedImage(before?.logoUrl, team.logoUrl);
+      return team;
+    },
+    "/admin/teams"
+  );
 }
 
 export async function updateTeamManagersAction(teamId: string, formData: FormData) {
@@ -281,12 +320,36 @@ export async function deleteTeamAction(id: string) {
   await runDelete(() => deleteTeam(id), "/admin/teams");
 }
 
+async function tournamentUploads(formData: FormData) {
+  const [logoUrl, bannerUrl] = await Promise.all([
+    uploadFromForm(formData, "logoFile", "tournament-logo"),
+    uploadFromForm(formData, "bannerFile", "tournament-banner")
+  ]);
+  return { ...(logoUrl ? { logoUrl } : {}), ...(bannerUrl ? { bannerUrl } : {}) };
+}
+
 export async function createTournamentAction(formData: FormData) {
-  await runFormMutation(formData, tournamentSchema, createTournament, "/admin/tournaments");
+  await runFormMutation(
+    formData,
+    tournamentSchema,
+    async (input) => createTournament({ ...input, ...(await tournamentUploads(formData)) }),
+    "/admin/tournaments"
+  );
 }
 
 export async function updateTournamentAction(id: string, formData: FormData) {
-  await runFormMutation(formData, tournamentSchema, (input) => updateTournament(id, input), "/admin/tournaments");
+  await runFormMutation(
+    formData,
+    tournamentSchema,
+    async (input) => {
+      const before = await prisma.tournament.findUnique({ where: { id }, select: { logoUrl: true, bannerUrl: true } });
+      const tournament = await updateTournament(id, { ...input, ...(await tournamentUploads(formData)) });
+      await deleteReplacedImage(before?.logoUrl, tournament.logoUrl);
+      await deleteReplacedImage(before?.bannerUrl, tournament.bannerUrl);
+      return tournament;
+    },
+    "/admin/tournaments"
+  );
 }
 
 export async function deleteTournamentAction(id: string) {
@@ -593,7 +656,7 @@ export async function refreshPlayerAvatarAction(id: string) {
   });
   if (!player) redirect(`/admin/players?error=${encodeURIComponent("Player not found.")}`);
 
-  const result = await refreshPlayerAvatar(player, { fromDiscord: true });
+  const result = await refreshPlayerAvatar(player, { fromDiscord: true, overrideManual: true });
   refreshAll();
   revalidatePath(`/players/${player.slug}`);
   redirect(
@@ -624,6 +687,64 @@ export async function bulkOperatorIconsAction(formData: FormData) {
     }
     target = withNotice(target, `${rows.length} operator${rows.length === 1 ? "" : "s"} mapped.`);
     refreshAll();
+  } catch (error) {
+    target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
+  }
+
+  redirect(target);
+}
+
+/** Uploads many operator icons at once; each is named after its file (Thermite.png -> Thermite). */
+export async function uploadOperatorIconsAction(formData: FormData) {
+  await assertAdminUser();
+
+  let target = "/admin/settings?saved=1";
+  try {
+    const files = formFiles(formData, "iconFiles");
+    if (!files.length) throw new Error("Choose at least one image.");
+
+    const saved: string[] = [];
+    const failed: string[] = [];
+    for (const file of files) {
+      const name = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      if (!name) continue;
+      try {
+        const existing = await prisma.operatorIcon.findUnique({ where: { name }, select: { iconPath: true } });
+        const iconPath = await saveUploadedImage(file, "operator-icon");
+        await prisma.operatorIcon.upsert({ where: { name }, create: { name, iconPath }, update: { iconPath } });
+        await deleteReplacedImage(existing?.iconPath, iconPath);
+        saved.push(name);
+      } catch (error) {
+        failed.push(`${file.name} (${mutationError(error)})`);
+      }
+    }
+
+    target = withNotice(target, `${saved.length} operator icon${saved.length === 1 ? "" : "s"} uploaded.${failed.length ? ` Failed: ${failed.join("; ")}` : ""}`);
+    refreshAll();
+  } catch (error) {
+    target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
+  }
+
+  redirect(target);
+}
+
+export async function updateLeagueLogoAction(formData: FormData) {
+  await assertAdminUser();
+
+  let target = "/admin/settings?saved=1";
+  try {
+    const leagueId = String(formData.get("leagueId") || "");
+    const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { slug: true, logoUrl: true } });
+    if (!league) throw new Error("Choose a league.");
+
+    const logoUrl = await uploadFromForm(formData, "logoFile", "league-logo");
+    if (!logoUrl) throw new Error("Choose an image to upload.");
+
+    await prisma.league.update({ where: { id: leagueId }, data: { logoUrl } });
+    await deleteReplacedImage(league.logoUrl, logoUrl);
+    target = withNotice(target, "League logo updated.");
+    refreshAll();
+    revalidatePath(`/leagues/${league.slug}`);
   } catch (error) {
     target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
   }
@@ -665,16 +786,15 @@ export async function upsertOperatorIconAction(formData: FormData) {
   let target = "/admin/settings?saved=1";
   try {
     const input = operatorIconSchema.parse(formDataToObject(formData));
+    const existing = await prisma.operatorIcon.findUnique({ where: { name: input.name }, select: { iconPath: true } });
+    const uploaded = await uploadFromForm(formData, "iconFile", "operator-icon");
+    const iconPath = uploaded || input.iconPath || existing?.iconPath || null;
     await prisma.operatorIcon.upsert({
       where: { name: input.name },
-      create: {
-        name: input.name,
-        iconPath: input.iconPath || null
-      },
-      update: {
-        iconPath: input.iconPath || null
-      }
+      create: { name: input.name, iconPath },
+      update: { iconPath }
     });
+    await deleteReplacedImage(existing?.iconPath, iconPath);
     refreshAll();
   } catch (error) {
     target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
@@ -684,7 +804,10 @@ export async function upsertOperatorIconAction(formData: FormData) {
 }
 
 export async function deleteOperatorIconAction(id: string) {
-  await runDelete(() => prisma.operatorIcon.delete({ where: { id } }), "/admin/settings");
+  await runDelete(async () => {
+    const icon = await prisma.operatorIcon.delete({ where: { id } });
+    await deleteReplacedImage(icon.iconPath, null);
+  }, "/admin/settings");
 }
 
 export async function setPlayerOfWeekAction(formData: FormData) {

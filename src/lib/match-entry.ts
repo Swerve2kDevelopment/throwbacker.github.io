@@ -142,7 +142,12 @@ export function parseOperatorBan(raw: string): OperatorBan {
 }
 
 export function normalizeName(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Strip accents first so "Jäger" and "Jager" match.
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 export function operatorKey(value: string) {

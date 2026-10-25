@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { createTeamAction, deleteTeamAction } from "@/lib/admin-actions";
 import { assertAdminUser } from "@/lib/permissions";
@@ -44,9 +45,10 @@ export default async function AdminTeamsPage({
                 <input className="input" name="region" />
               </Field>
             </div>
+            <ImageUploadField label="Upload logo" name="logoFile" />
             <div className="grid gap-3 md:grid-cols-[1fr_120px]">
-              <Field label="Logo URL">
-                <input className="input" name="logoUrl" />
+              <Field label="…or logo URL">
+                <input className="input" name="logoUrl" placeholder="/team-logos/Name.png or https://…" />
               </Field>
               <Field label="Theme color">
                 <input className="input h-[42px] p-1" type="color" name="themeColor" defaultValue="#e11d2e" />

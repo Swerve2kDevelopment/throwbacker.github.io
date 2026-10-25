@@ -41,6 +41,12 @@ async function loadImageBytes(value?: string | null) {
 
   if (value.startsWith("/")) {
     const cleanPath = value.split("?")[0];
+    const upload = cleanPath.match(/^\/api\/images\/([^/]+)$/);
+    if (upload) {
+      const image = await prisma.uploadedImage.findUnique({ where: { id: upload[1] } });
+      return image ? Buffer.from(image.data) : null;
+    }
+
     const dbAvatar = cleanPath.match(/^\/api\/player-avatars\/([^/]+)$/);
     if (dbAvatar) {
       const image = await prisma.playerAvatarImage.findUnique({ where: { playerId: dbAvatar[1] } });

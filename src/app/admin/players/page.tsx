@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AdminForm, AdminStatusBanner, Field } from "@/components/admin/AdminForm";
+import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { ConfirmDeleteModal } from "@/components/ui/ConfirmDeleteModal";
 import { createPlayerAction, deletePlayerAction } from "@/lib/admin-actions";
 import { assertAdminUser } from "@/lib/permissions";
@@ -75,7 +76,8 @@ export default async function AdminPlayersPage({
                 </select>
               </Field>
             </div>
-            <Field label="Avatar URL">
+            <ImageUploadField label="Upload photo (optional)" name="photoFile" hint="Leave empty to use their Discord avatar. Cropped to a square." />
+            <Field label="…or avatar URL">
               <input className="input" name="avatarUrl" placeholder="Leave blank to fetch from Discord ID" />
             </Field>
             <Field label="Social links">

@@ -19,7 +19,12 @@ function extensionFromContentType(contentType: string | null) {
 }
 
 export function isLocalAvatarUrl(value?: string | null) {
-  return Boolean(value?.startsWith("/player-avatars/") || value?.startsWith("/api/player-avatars/"));
+  return Boolean(value?.startsWith("/player-avatars/") || value?.startsWith("/api/player-avatars/") || isManualPlayerPhoto(value));
+}
+
+/** A photo an admin uploaded by hand. Automatic Discord refreshes leave it alone. */
+export function isManualPlayerPhoto(value?: string | null) {
+  return Boolean(value?.startsWith("/api/images/"));
 }
 
 export function isDiscordCdnUrl(value?: string | null) {
@@ -111,12 +116,15 @@ export type AvatarRefreshResult = {
  */
 export async function refreshPlayerAvatar(
   player: { id: string; displayName: string; discordId: string | null; avatarUrl: string | null },
-  options: { fromDiscord?: boolean } = {}
+  options: { fromDiscord?: boolean; overrideManual?: boolean } = {}
 ): Promise<AvatarRefreshResult> {
   const base = { playerId: player.id, displayName: player.displayName };
 
   if (!options.fromDiscord && isLocalAvatarUrl(player.avatarUrl)) {
     return { ...base, status: "skipped", detail: "Already cached." };
+  }
+  if (options.fromDiscord && isManualPlayerPhoto(player.avatarUrl) && !options.overrideManual) {
+    return { ...base, status: "skipped", detail: "Uses an uploaded photo." };
   }
 
   let sourceUrl = isLocalAvatarUrl(player.avatarUrl) ? null : player.avatarUrl;

@@ -2,7 +2,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import type { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 
-import { cachePlayerAvatar } from "@/lib/avatar-cache";
+import { cachePlayerAvatar, isManualPlayerPhoto } from "@/lib/avatar-cache";
 import { prisma } from "@/lib/prisma";
 
 type DiscordProfile = {
@@ -124,8 +124,9 @@ export const authOptions: NextAuthOptions = {
       // Logging in hands us a fresh avatar URL, which is the cheapest way to
       // repair a player profile whose stored Discord link has expired.
       try {
-        const players = await prisma.player.findMany({ where: { discordId: discordProfile.id }, select: { id: true } });
+        const players = await prisma.player.findMany({ where: { discordId: discordProfile.id }, select: { id: true, avatarUrl: true } });
         for (const player of players) {
+          if (isManualPlayerPhoto(player.avatarUrl)) continue;
           const avatarUrl = await cachePlayerAvatar(player.id, avatar);
           if (avatarUrl) await prisma.player.update({ where: { id: player.id }, data: { avatarUrl } });
         }
