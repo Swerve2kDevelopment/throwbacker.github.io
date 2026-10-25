@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AdminForm, AdminStatusBanner } from "@/components/admin/AdminForm";
+import type { StatCell } from "@/components/admin/MatchBuilder";
 import { MatchForm } from "@/components/admin/MatchForm";
+import { parseOperatorBan } from "@/lib/match-entry";
 import { announceMatchAction, updateMatchAction } from "@/lib/admin-actions";
 import { getMatchTitle } from "@/lib/match-utils";
 import { assertAdminUser } from "@/lib/permissions";
@@ -20,7 +22,7 @@ export default async function AdminEditMatchPage({
   await assertAdminUser();
 
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const [match, tournaments, leagues, teams, players] = await Promise.all([
+  const [match, tournaments, leagues, teams, players, operators] = await Promise.all([
     prisma.match.findUnique({
       where: { id },
       include: {
@@ -28,36 +30,36 @@ export default async function AdminEditMatchPage({
         teamA: true,
         teamB: true,
         participants: true,
-        stats: { include: { player: true }, orderBy: [{ side: "asc" }, { kills: "desc" }] },
+        stats: true,
         keyMoments: { include: { player: true }, orderBy: { createdAt: "asc" } }
       }
     }),
     prisma.tournament.findMany({ orderBy: { startDate: "desc" }, select: { id: true, name: true } }),
     prisma.league.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, shortName: true, slug: true } }),
-    prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true } })
+    prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tag: true, logoUrl: true } }),
+    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true } }),
+    prisma.operatorIcon.findMany({ orderBy: { name: "asc" }, select: { name: true, iconPath: true } })
   ]);
 
   if (!match) notFound();
 
-  const mapsRaw = match.maps.map((map) => [map.mapName, map.teamAScore, map.teamBScore, map.winnerSide || ""].join(" | ").replace(/ \| $/, "")).join("\n");
-
-  // Re-create the scoreboard text so saving the form without changes is lossless.
-  const bulkStatsRaw = match.maps
-    .map((map) => {
-      const rows = match.stats
-        .filter((stat) => stat.mapGameId === map.id)
-        .map((stat) => {
-          const rounds = stat.roundsPlayed && stat.roundsPlayed !== map.teamAScore + map.teamBScore ? String(stat.roundsPlayed) : "";
-          const columns = [stat.player.displayName, stat.kills, stat.deaths, stat.assists, stat.headshots, stat.ratingOverride ?? "", rounds];
-          while (columns.length > 5 && columns[columns.length - 1] === "") columns.pop();
-          return columns.join(" | ");
-        });
-      if (!rows.length) return "";
-      return match.maps.length > 1 ? [`# Map ${map.order}`, ...rows].join("\n") : rows.join("\n");
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  // Builder state: one scoreboard per map, keyed by map id, with every stat line pre-filled.
+  const cell = (value: number | null | undefined) => (value === null || value === undefined ? "" : String(value));
+  const stats: Record<string, Record<string, StatCell>> = {};
+  for (const stat of match.stats) {
+    const map = match.maps.find((item) => item.id === stat.mapGameId);
+    const rounds = map && stat.roundsPlayed && stat.roundsPlayed !== map.teamAScore + map.teamBScore ? String(stat.roundsPlayed) : "";
+    stats[stat.mapGameId] = {
+      ...stats[stat.mapGameId],
+      [stat.playerId]: { k: cell(stat.kills), d: cell(stat.deaths), a: cell(stat.assists), hs: cell(stat.headshots), rating: cell(stat.ratingOverride), rounds }
+    };
+  }
+  const sided = (side: "A" | "B") => [
+    ...new Set([
+      ...match.participants.filter((participant) => participant.side === side).map((participant) => participant.playerId),
+      ...match.stats.filter((stat) => stat.side === side).map((stat) => stat.playerId)
+    ])
+  ];
 
   return (
     <div className="grid gap-5">
@@ -83,12 +85,19 @@ export default async function AdminEditMatchPage({
           leagues={leagues}
           teams={teams}
           players={players}
+          operators={operators}
           match={match}
+          builder={{
+            teamAPlayerIds: sided("A"),
+            teamBPlayerIds: sided("B").filter((id) => !sided("A").includes(id)),
+            maps: match.maps.map((map) => ({ key: map.id, name: map.mapName, a: String(map.teamAScore), b: String(map.teamBScore) })),
+            stats,
+            bans: match.operatorBans.map((line) => {
+              const ban = parseOperatorBan(line);
+              return { operator: ban.operator, side: ban.side };
+            })
+          }}
           defaults={{
-            teamAPlayerIds: match.participants.filter((participant) => participant.side === "A").map((participant) => participant.playerId),
-            teamBPlayerIds: match.participants.filter((participant) => participant.side === "B").map((participant) => participant.playerId),
-            mapsRaw,
-            bulkStatsRaw,
             keyMomentsRaw: match.keyMoments.map((moment) => `${moment.player.displayName} | ${moment.text}`).join("\n")
           }}
         />

@@ -19,7 +19,7 @@ export default async function AdminMatchesPage({
   await assertAdminUser();
 
   const resolvedSearchParams = await searchParams;
-  const [matches, tournaments, leagues, teams, players] = await Promise.all([
+  const [matches, tournaments, leagues, teams, players, operators] = await Promise.all([
     prisma.match.findMany({
       include: { tournament: true, league: true, teamA: true, teamB: true, maps: true, participants: true, _count: { select: { stats: true } } },
       orderBy: { playedAt: "desc" },
@@ -27,15 +27,16 @@ export default async function AdminMatchesPage({
     }),
     prisma.tournament.findMany({ orderBy: { startDate: "desc" } }),
     prisma.league.findMany({ orderBy: { name: "asc" } }),
-    prisma.team.findMany({ orderBy: { name: "asc" } }),
-    prisma.player.findMany({ orderBy: { displayName: "asc" } })
+    prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tag: true, logoUrl: true } }),
+    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true } }),
+    prisma.operatorIcon.findMany({ orderBy: { name: "asc" }, select: { name: true, iconPath: true } })
   ]);
 
   return (
     <div>
       <AdminStatusBanner searchParams={resolvedSearchParams} />
-      <div className="grid gap-5 2xl:grid-cols-[560px_1fr]">
-        <AdminForm title="Log a Match" description="Paste the scoreboard and you're done. Stats, key moments and bans all save together.">
+      <div className="grid gap-5">
+        <AdminForm title="Log a Match" description="Pick the teams, fill in the scoreboard, click the bans. Everything saves together.">
           <MatchForm
             action={createMatchAction}
             submitLabel="Save match"
@@ -43,6 +44,7 @@ export default async function AdminMatchesPage({
             leagues={leagues}
             teams={teams}
             players={players}
+            operators={operators}
             defaults={{ tournamentId: resolvedSearchParams.tournamentId }}
           />
         </AdminForm>

@@ -154,6 +154,8 @@ export const matchSchema = z.object({
   bracketRound: nullableInt,
   bracketPosition: nullableInt,
   announce: checkbox,
+  // Set by the match builder: the scoreboard is complete, so stat lines it no longer lists are removed.
+  statsReplace: checkbox,
   mapsRaw: z.preprocess(emptyToUndefined, z.string().optional()),
   bulkStatsRaw: z.preprocess(emptyToUndefined, z.string().optional()),
   // Kept as "" when the field is submitted empty so the editor can clear moments.

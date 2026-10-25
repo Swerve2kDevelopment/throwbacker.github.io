@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       mapVetoes: [],
       operatorBans: [],
       announce: false,
+      statsReplace: false,
       maps: draft.maps.map((map, index) => ({
         mapName: map.mapName,
         teamAScore: map.teamAScore,

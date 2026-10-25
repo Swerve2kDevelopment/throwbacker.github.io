@@ -392,6 +392,7 @@ async function syncBulkMatchStats(matchId: string, input: MatchInput, warnings: 
   const unsided = new Set<string>();
   const inferredA = new Set<string>();
   const inferredB = new Set<string>();
+  const savedKeys = new Set<string>();
   let saved = 0;
 
   for (const row of rows) {
@@ -441,7 +442,16 @@ async function syncBulkMatchStats(matchId: string, input: MatchInput, warnings: 
       create: { ...data, playerId, matchId, mapGameId: mapGame.id },
       update: data
     });
+    savedKeys.add(`${playerId}:${mapGame.id}`);
     saved += 1;
+  }
+
+  // The match builder sends the whole scoreboard, so anything it no longer
+  // contains (a player removed from the grid) should go too.
+  if (input.statsReplace && saved) {
+    const existing = await prisma.playerMapStats.findMany({ where: { matchId }, select: { id: true, playerId: true, mapGameId: true } });
+    const stale = existing.filter((stat) => !savedKeys.has(`${stat.playerId}:${stat.mapGameId}`)).map((stat) => stat.id);
+    if (stale.length) await prisma.playerMapStats.deleteMany({ where: { id: { in: stale } } });
   }
 
   if (inferredA.size || inferredB.size) {
