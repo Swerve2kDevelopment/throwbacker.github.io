@@ -10,8 +10,6 @@ import {
   benchPlayerAction,
   closeRecruitmentPostAction,
   createRecruitmentPostAction,
-  refreshMyWidgetAction,
-  unlinkMyWidgetAction,
   releasePlayerAction,
   respondTransferRequestAction,
   sendTransferRequestAction
@@ -23,39 +21,10 @@ export const metadata: Metadata = {
   title: "Account"
 };
 
-export default async function AccountPage({ searchParams }: { searchParams: Promise<{ admin?: string; transfer?: string; recruit?: string; widget?: string }> }) {
+export default async function AccountPage({ searchParams }: { searchParams: Promise<{ admin?: string; transfer?: string; recruit?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const session = await getAuthSession();
   if (!session?.user?.id) redirect("/login?callbackUrl=/account");
-
-  const myPlayer = session.user.discordId
-    ? await prisma.player.findFirst({
-        where: { discordId: session.user.discordId },
-        select: { slug: true, displayName: true, discordWidgetLinkedAt: true, discordWidgetSyncedAt: true }
-      })
-    : null;
-  const widgetMessages: Record<string, string> = {
-    linked: "Linked! Open your Discord profile, edit it, and add the OSCL widget to show your stats.",
-    refreshed: "Your widget stats were updated.",
-    unlinked: "The site will stop updating your widget. Remove it from your Discord profile to hide it.",
-    cancelled: "You clicked Cancel on Discord, so nothing was linked.",
-    expired: "That link expired. Try again.",
-    "wrong-account": "You approved with a different Discord account than the one you're signed in with.",
-    "no-player": "Your Discord account isn't connected to an OSCL player yet. Ask an admin to add your Discord ID to your player.",
-    "scope-missing": "Discord didn't grant profile access. Try again and approve the permission.",
-    "discord-rejected": "Discord rejected the link. Ask an admin to check the widget setup.",
-    "signed-out": "Sign in first, then link your widget.",
-    "not-configured": "The widget isn't set up on this site yet."
-  };
-  const widgetStatus = resolvedSearchParams.widget;
-  const widgetMessage = widgetStatus
-    ? widgetMessages[widgetStatus] ||
-      (widgetStatus.startsWith("discord-error:")
-        ? `Discord refused the link: ${widgetStatus.slice("discord-error:".length)}.`
-        : widgetStatus.includes("sync-failed")
-          ? `Linked, but sending stats failed (Discord ${widgetStatus.split("-").pop()}). An admin needs to check the widget setup.`
-          : widgetStatus)
-    : null;
 
   const [user, managedTeams, signablePlayers, incomingRequests] = await Promise.all([
     prisma.user.findUnique({
@@ -169,45 +138,6 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         </aside>
 
         <div className="space-y-6">
-          {widgetMessage ? <div className="notice-banner">{widgetMessage}</div> : null}
-
-          {myPlayer ? (
-            <section className="panel p-4">
-              <p className="eyebrow">Discord profile widget</p>
-              <h2 className="mt-1 text-2xl font-black">Show your OSCL stats on Discord</h2>
-              <p className="mt-2 text-sm text-metal-muted">
-                Adds a card to your Discord profile with your kills, deaths, K/D, matches and rank. It updates on its own whenever a match with you in it is saved.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                {myPlayer.discordWidgetLinkedAt ? (
-                  <>
-                    <span className="league-pill">Linked</span>
-                    <span className="form-hint">
-                      {myPlayer.discordWidgetSyncedAt ? `Last updated ${myPlayer.discordWidgetSyncedAt.toLocaleString("en-GB")}` : "Waiting for the first update"}
-                    </span>
-                    <form action={refreshMyWidgetAction}>
-                      <button className="button" type="submit">
-                        Update now
-                      </button>
-                    </form>
-                    <form action={unlinkMyWidgetAction}>
-                      <button className="button button-ghost" type="submit">
-                        Stop updating
-                      </button>
-                    </form>
-                  </>
-                ) : (
-                  <a className="button button-primary" href="/api/discord/widget/link">
-                    Link my Discord profile
-                  </a>
-                )}
-              </div>
-              {myPlayer.discordWidgetLinkedAt ? (
-                <p className="form-hint mt-3">On Discord: User Settings → Profiles → add the Old Siege Challenger League widget, if it isn&apos;t showing yet.</p>
-              ) : null}
-            </section>
-          ) : null}
-
           {incomingRequests.length ? (
             <section className="panel p-4">
               <p className="label text-metal-accent">Transfer notifications</p>
