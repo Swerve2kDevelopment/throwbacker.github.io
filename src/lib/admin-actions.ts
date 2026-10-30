@@ -46,6 +46,7 @@ import path from "path";
 
 import { cachePlayerAvatar, refreshPlayerAvatar, type AvatarRefreshResult } from "@/lib/avatar-cache";
 import { deleteReplacedImage, formFiles, saveUploadedImage, uploadFromForm } from "@/lib/image-uploads";
+import { syncLinkedWidgets } from "@/lib/discord-widget";
 import { announceMatchStats } from "@/lib/match-announcements";
 import { OSCL_EMBED_COLOR, SETTING_KEYS, getSiteSetting, sendDiscordWebhook, setSiteSetting } from "@/lib/site-settings";
 
@@ -392,6 +393,12 @@ export async function updateTournamentPlacementsAction(tournamentId: string, for
 
 async function matchNotice(result: Awaited<ReturnType<typeof createMatch>>, announce: boolean, kind: "new" | "updated") {
   const notes = [...result.warnings];
+  if (result.statsSaved) {
+    // Keep linked players' Discord profile widgets in step with the new stats.
+    const stats = await prisma.playerMapStats.findMany({ where: { matchId: result.match.id }, select: { playerId: true } });
+    const widgets = await syncLinkedWidgets([...new Set(stats.map((stat) => stat.playerId))]).catch(() => null);
+    if (widgets?.synced) notes.push(`${widgets.synced} Discord profile widget${widgets.synced === 1 ? "" : "s"} updated.`);
+  }
   if (result.statsSaved) notes.unshift(`${result.statsSaved} stat line${result.statsSaved === 1 ? "" : "s"} saved.`);
   if (announce && result.statsSaved) {
     const announcement = await announceMatchStats(result.match.id, kind);
@@ -568,6 +575,21 @@ export async function updateSiteSettingsAction(formData: FormData) {
     await setSiteSetting(SETTING_KEYS.pingOnRecruitment, String(input.pingOnRecruitment));
     await setSiteSetting(SETTING_KEYS.pingOnSignings, String(input.pingOnSignings));
     refreshAll();
+  } catch (error) {
+    target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
+  }
+
+  redirect(target);
+}
+
+export async function syncAllWidgetsAction() {
+  await assertAdminUser();
+
+  let target = "/admin/settings?saved=1";
+  try {
+    const result = await syncLinkedWidgets();
+    const failed = result.failed.length ? ` Failed: ${result.failed.slice(0, 8).join(", ")}${result.failed.length > 8 ? "..." : ""}.` : "";
+    target = withNotice(target, `Profile widgets: ${result.synced} of ${result.linked} linked player${result.linked === 1 ? "" : "s"} updated.${failed}`);
   } catch (error) {
     target = `/admin/settings?error=${encodeURIComponent(mutationError(error))}`;
   }

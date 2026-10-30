@@ -8,6 +8,7 @@ import { getAuthSession } from "@/lib/permissions";
 import { sendDiscordDm } from "@/lib/discord-bot";
 import { syncPlayerCurrentTeam } from "@/lib/mutations";
 import { prisma } from "@/lib/prisma";
+import { pushPlayerWidget } from "@/lib/discord-widget";
 import { announceRecruitmentPost, announceSigningRequest } from "@/lib/team-announcements";
 import { recruitmentPostSchema } from "@/lib/validators";
 
@@ -272,4 +273,24 @@ export async function closeRecruitmentPostAction(postId: string) {
 
   refreshTransfers(manager.team.slug);
   redirect("/account?recruit=closed");
+}
+
+async function requireLinkedPlayer() {
+  const session = await getAuthSession();
+  if (!session?.user?.discordId) redirect("/login?callbackUrl=/account");
+  const player = await prisma.player.findFirst({ where: { discordId: session.user.discordId }, select: { id: true } });
+  if (!player) redirect("/account?widget=no-player");
+  return player;
+}
+
+export async function refreshMyWidgetAction() {
+  const player = await requireLinkedPlayer();
+  const result = await pushPlayerWidget(player.id);
+  redirect(`/account?widget=${result.ok ? "refreshed" : `sync-failed-${result.status}`}`);
+}
+
+export async function unlinkMyWidgetAction() {
+  const player = await requireLinkedPlayer();
+  await prisma.player.update({ where: { id: player.id }, data: { discordWidgetLinkedAt: null } });
+  redirect("/account?widget=unlinked");
 }

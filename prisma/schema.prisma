@@ -126,35 +126,39 @@ model AdminUser {
 }
 
 model Player {
-  id                String             @id @default(cuid())
-  slug              String             @unique
-  displayName       String
-  discordId         String?
-  discordUsername   String?
-  nationality       String?
-  avatarUrl         String?
-  currentTeamId     String?
-  realName          String?
-  role              String?
-  status            String?
-  dateOfBirth       DateTime?
-  socialLinks       String[]           @default([])
-  aliases           String[]           @default([])
-  notes             String?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  currentTeam       Team?              @relation("PlayerCurrentTeam", fields: [currentTeamId], references: [id], onDelete: SetNull)
-  memberships       TeamMembership[]
-  stats             PlayerMapStats[]
-  matchParticipants MatchParticipant[]
-  favoriteUsers     FavoritePlayer[]
-  tournamentMvps    Tournament[]       @relation("TournamentMvp")
-  transferRequests  TransferRequest[]
-  transferEvents    TransferEvent[]
-  bans              PlayerBan[]
-  keyMoments        PlayerKeyMoment[]
-  playerOfWeeks     PlayerOfWeek[]
-  avatarImage       PlayerAvatarImage?
+  id                    String             @id @default(cuid())
+  slug                  String             @unique
+  displayName           String
+  discordId             String?
+  discordUsername       String?
+  nationality           String?
+  avatarUrl             String?
+  currentTeamId         String?
+  realName              String?
+  role                  String?
+  status                String?
+  dateOfBirth           DateTime?
+  socialLinks           String[]           @default([])
+  aliases               String[]           @default([])
+  notes                 String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  currentTeam           Team?              @relation("PlayerCurrentTeam", fields: [currentTeamId], references: [id], onDelete: SetNull)
+  memberships           TeamMembership[]
+  stats                 PlayerMapStats[]
+  matchParticipants     MatchParticipant[]
+  favoriteUsers         FavoritePlayer[]
+  tournamentMvps        Tournament[]       @relation("TournamentMvp")
+  transferRequests      TransferRequest[]
+  transferEvents        TransferEvent[]
+  bans                  PlayerBan[]
+  keyMoments            PlayerKeyMoment[]
+  playerOfWeeks         PlayerOfWeek[]
+  avatarImage           PlayerAvatarImage?
+  /// Set when the player linked the Discord profile stats widget.
+  discordWidgetLinkedAt DateTime?
+  /// Last successful push of stats to the widget.
+  discordWidgetSyncedAt DateTime?
 }
 
 model Team {

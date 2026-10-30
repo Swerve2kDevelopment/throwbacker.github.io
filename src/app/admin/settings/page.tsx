@@ -7,6 +7,7 @@ import {
   deleteOperatorIconAction,
   deletePlayerOfWeekAction,
   importOperatorIconsAction,
+  syncAllWidgetsAction,
   setPlayerOfWeekAction,
   testDiscordWebhookAction,
   updateLeagueLogoAction,
@@ -17,6 +18,7 @@ import {
 import { formatDate } from "@/lib/format";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { WIDGET_FIELDS, widgetApplicationId, widgetBotToken } from "@/lib/discord-widget";
 import { SETTING_KEYS, getSiteSettings } from "@/lib/site-settings";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +42,8 @@ export default async function AdminSettingsPage({
   await assertAdminUser();
 
   const resolvedSearchParams = await searchParams;
-  const [settings, operators, players, playerOfWeeks, avatarRows, leagues] = await Promise.all([
+  const [linkedWidgets, settings, operators, players, playerOfWeeks, avatarRows, leagues] = await Promise.all([
+    prisma.player.count({ where: { discordWidgetLinkedAt: { not: null } } }),
     getSiteSettings(Object.values(SETTING_KEYS)),
     prisma.operatorIcon.findMany({ orderBy: { name: "asc" } }),
     prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
@@ -214,6 +217,62 @@ export default async function AdminSettingsPage({
           files in <code>public/player-avatars/</code>, run <code>npm run avatars:cache</code> locally and deploy. Players also refresh their own avatar whenever
           they sign in.
         </p>
+      </AdminForm>
+
+      <AdminForm
+        title="Discord profile widget"
+        description="Players link once from their Account page; their stats then update on their Discord profile whenever a match they played is saved."
+      >
+        <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+          <div className="grid content-start gap-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="stat-tile">
+                <p>Linked players</p>
+                <strong>{linkedWidgets}</strong>
+              </div>
+              <div className={`stat-tile${widgetApplicationId() ? "" : " stat-tile-accent"}`}>
+                <p>App ID</p>
+                <strong className="is-long">{widgetApplicationId() ? "Set" : "Missing"}</strong>
+              </div>
+              <div className="stat-tile">
+                <p>Widget bot token</p>
+                <strong className="is-long">{process.env.DISCORD_WIDGET_BOT_TOKEN ? "Set" : widgetBotToken() ? "Using bot token" : "Missing"}</strong>
+              </div>
+            </div>
+            <form action={syncAllWidgetsAction}>
+              <button className="button button-primary" type="submit" disabled={!linkedWidgets}>
+                Update all linked widgets
+              </button>
+            </form>
+            <p className="form-hint">
+              Setup, once: in the Discord Developer Portal open the app players sign in with, add <code>/api/discord/widget/callback</code> on your site as an OAuth2
+              redirect, and set <code>DISCORD_WIDGET_BOT_TOKEN</code> in Vercel to that same app&apos;s bot token (Bot → Reset Token). Then build the card under Games →
+              Widget using the keys on the right with Value Type &quot;User Data&quot;.
+            </p>
+          </div>
+          <div className="table-scroll">
+            <table className="wiki-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Shows</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {WIDGET_FIELDS.map((field) => (
+                  <tr key={field.key}>
+                    <td>
+                      <code className="text-metal-link">{field.key}</code>
+                    </td>
+                    <td>{field.label}</td>
+                    <td className="text-metal-muted">{field.type}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </AdminForm>
 
       <AdminForm title="League logos" description="Shown on league pages and next to league games.">
