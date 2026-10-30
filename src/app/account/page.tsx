@@ -38,7 +38,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     linked: "Linked! Open your Discord profile, edit it, and add the OSCL widget to show your stats.",
     refreshed: "Your widget stats were updated.",
     unlinked: "The site will stop updating your widget. Remove it from your Discord profile to hide it.",
-    cancelled: "Linking was cancelled on Discord.",
+    cancelled: "You clicked Cancel on Discord, so nothing was linked.",
     expired: "That link expired. Try again.",
     "wrong-account": "You approved with a different Discord account than the one you're signed in with.",
     "no-player": "Your Discord account isn't connected to an OSCL player yet. Ask an admin to add your Discord ID to your player.",
@@ -50,9 +50,11 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const widgetStatus = resolvedSearchParams.widget;
   const widgetMessage = widgetStatus
     ? widgetMessages[widgetStatus] ||
-      (widgetStatus.includes("sync-failed")
-        ? `Linked, but sending stats failed (Discord ${widgetStatus.split("-").pop()}). An admin needs to check the widget setup.`
-        : widgetStatus)
+      (widgetStatus.startsWith("discord-error:")
+        ? `Discord refused the link: ${widgetStatus.slice("discord-error:".length)}.`
+        : widgetStatus.includes("sync-failed")
+          ? `Linked, but sending stats failed (Discord ${widgetStatus.split("-").pop()}). An admin needs to check the widget setup.`
+          : widgetStatus)
     : null;
 
   const [user, managedTeams, signablePlayers, incomingRequests] = await Promise.all([

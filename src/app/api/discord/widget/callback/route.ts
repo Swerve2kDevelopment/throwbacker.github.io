@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "oscl_widget_state";
 
+// Use the address the visitor is actually on (www or not), like sign-in does on
+// Vercel, so the redirect sent to Discord always matches the one coming back.
 function siteOrigin(request: Request) {
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "");
+  if (host) return `${proto}://${host}`;
   return (process.env.NEXTAUTH_URL || new URL(request.url).origin).replace(/\/$/, "");
 }
 
@@ -21,7 +26,12 @@ export async function GET(request: Request) {
     return response;
   };
 
-  if (url.searchParams.get("error")) return back("cancelled");
+  const discordError = url.searchParams.get("error");
+  if (discordError) {
+    if (discordError === "access_denied") return back("cancelled");
+    const description = url.searchParams.get("error_description");
+    return back(`discord-error:${discordError}${description ? ` (${description})` : ""}`);
+  }
 
   const state = url.searchParams.get("state");
   const cookieState = request.headers
