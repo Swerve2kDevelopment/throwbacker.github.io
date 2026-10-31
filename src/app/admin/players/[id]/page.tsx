@@ -64,6 +64,9 @@ export default async function AdminEditPlayerPage({
               <input className="input" name="realName" defaultValue={player.realName || ""} />
             </Field>
           </div>
+          <Field label="In-game name">
+            <input className="input" name="inGameName" defaultValue={player.inGameName || ""} placeholder="Exact username shown on the scoreboard" />
+          </Field>
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Role">
               <input className="input" name="role" defaultValue={player.role || ""} />

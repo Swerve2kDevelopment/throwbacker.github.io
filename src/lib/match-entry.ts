@@ -2,8 +2,8 @@
  * Text formats used by the admin match editor.
  *
  * Player stats, one line per player:
- *   player | kills | deaths | assists | headshots | rating | rounds
- * rating and rounds are optional. Separators can be "|", "," or tabs.
+ *   player | kills | deaths | assists | headshots | rating | rounds | plants
+ * rating, rounds and plants are optional. Separators can be "|", "," or tabs.
  * Start a block with a map heading to target a specific map:
  *   # Bank        (map name)
  *   # Map 2       (map order)
@@ -26,6 +26,7 @@ export type BulkStatRow = {
   headshots: number;
   rating: number | null;
   rounds: number | null;
+  plants: number | null;
 };
 
 export type KeyMomentRow = {
@@ -83,7 +84,7 @@ export function parseBulkStats(raw?: string | null): BulkStatRow[] {
       return;
     }
 
-    const [name = "", kills, deaths, assists, headshots, rating, rounds] = splitColumns(line);
+    const [name = "", kills, deaths, assists, headshots, rating, rounds, plants] = splitColumns(line);
     if (!name || /^(player|name)$/i.test(name)) return;
 
     rows.push({
@@ -95,7 +96,8 @@ export function parseBulkStats(raw?: string | null): BulkStatRow[] {
       assists: toInt(assists),
       headshots: toInt(headshots),
       rating: toOptionalNumber(rating),
-      rounds: rounds?.trim() ? toInt(rounds) : null
+      rounds: rounds?.trim() ? toInt(rounds) : null,
+      plants: plants?.trim() ? toInt(plants) : null
     });
   });
 

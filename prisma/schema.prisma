@@ -135,6 +135,8 @@ model Player {
   avatarUrl         String?
   currentTeamId     String?
   realName          String?
+  /// Exact username shown in-game, used to match uploaded scoreboards.
+  inGameName        String?
   role              String?
   status            String?
   dateOfBirth       DateTime?
@@ -461,6 +463,39 @@ model UploadedImage {
   createdAt    DateTime @default(now())
 
   @@index([kind])
+}
+
+enum StatsSubmissionStatus {
+  PENDING
+  IMPORTED
+  REJECTED
+}
+
+/// API key handed to a trusted match host. Only the SHA-256 hash is stored.
+model HostApiKey {
+  id          String            @id @default(cuid())
+  label       String
+  keyHash     String            @unique
+  keyPrefix   String
+  createdAt   DateTime          @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  submissions StatsSubmission[]
+}
+
+/// A scoreboard sent by a host's stats tracker, waiting for admin review.
+model StatsSubmission {
+  id         String                @id @default(cuid())
+  hostKeyId  String?
+  status     StatsSubmissionStatus @default(PENDING)
+  payload    Json
+  summary    String
+  matchId    String?
+  createdAt  DateTime              @default(now())
+  reviewedAt DateTime?
+  hostKey    HostApiKey?           @relation(fields: [hostKeyId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }
 
 model SiteSetting {

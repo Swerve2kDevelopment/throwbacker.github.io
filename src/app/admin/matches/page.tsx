@@ -8,13 +8,14 @@ import { createMatchAction, deleteMatchAction } from "@/lib/admin-actions";
 import { getMatchTitle } from "@/lib/match-utils";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { ingestPayloadSchema, submissionToBuilder } from "@/lib/stats-ingest";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMatchesPage({
   searchParams
 }: {
-  searchParams: Promise<{ saved?: string; deleted?: string; error?: string; notice?: string; tournamentId?: string }>;
+  searchParams: Promise<{ saved?: string; deleted?: string; error?: string; notice?: string; tournamentId?: string; submission?: string }>;
 }) {
   await assertAdminUser();
 
@@ -28,15 +29,35 @@ export default async function AdminMatchesPage({
     prisma.tournament.findMany({ orderBy: { startDate: "desc" } }),
     prisma.league.findMany({ orderBy: { name: "asc" } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tag: true, logoUrl: true } }),
-    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true } }),
+    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true, inGameName: true } }),
     prisma.operatorIcon.findMany({ orderBy: { name: "asc" }, select: { name: true, iconPath: true } })
   ]);
+
+  // Reviewing a tracker upload: prefill the builder from its scoreboard.
+  const submission = resolvedSearchParams.submission
+    ? await prisma.statsSubmission.findFirst({ where: { id: resolvedSearchParams.submission, status: "PENDING" }, include: { hostKey: true } })
+    : null;
+  const parsed = submission ? ingestPayloadSchema.safeParse(submission.payload) : null;
+  const upload = parsed?.success ? { payload: parsed.data, ...(await submissionToBuilder(parsed.data)) } : null;
 
   return (
     <div>
       <AdminStatusBanner searchParams={resolvedSearchParams} />
+      {resolvedSearchParams.submission && !upload ? <div className="notice-banner">That upload was already reviewed or no longer exists.</div> : null}
+      {upload ? (
+        <div className="notice-banner">
+          Reviewing an upload from {submission?.hostKey?.label || "a host"}
+          {upload.payload.build ? ` (${upload.payload.build})` : ""}. Check the scoreboard, then save.
+          {upload.unknown.length ? (
+            <>
+              {" "}
+              Not matched to a player: <strong>{upload.unknown.join(", ")}</strong>. Set their in-game name on the player page, then reopen this upload.
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-5">
-        <AdminForm title="Log a Match" description="Pick the teams, fill in the scoreboard, click the bans. Everything saves together.">
+        <AdminForm title={upload ? "Review tracker upload" : "Log a Match"} description="Pick the teams, fill in the scoreboard, click the bans. Everything saves together.">
           <MatchForm
             action={createMatchAction}
             submitLabel="Save match"
@@ -45,7 +66,9 @@ export default async function AdminMatchesPage({
             teams={teams}
             players={players}
             operators={operators}
-            defaults={{ tournamentId: resolvedSearchParams.tournamentId }}
+            builder={upload?.builder}
+            submissionId={upload ? submission?.id : undefined}
+            defaults={{ tournamentId: resolvedSearchParams.tournamentId, playedAt: upload?.payload.playedAt }}
           />
         </AdminForm>
 

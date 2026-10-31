@@ -13,9 +13,12 @@ type MatchFormProps = {
   operators: BuilderOperator[];
   match?: Match | null;
   builder?: Partial<MatchBuilderInitial>;
+  /** Tracker upload this form imports; marked imported when the match saves. */
+  submissionId?: string;
   defaults?: {
     tournamentId?: string;
     keyMomentsRaw?: string;
+    playedAt?: Date;
   };
 };
 
@@ -36,7 +39,7 @@ function dateTimeInput(value?: Date | null) {
  * One form for creating and editing matches. Teams, maps, the scoreboard and
  * operator bans are handled by the interactive MatchBuilder.
  */
-export function MatchForm({ action, submitLabel, tournaments, leagues, teams, players, operators, match, builder = {}, defaults = {} }: MatchFormProps) {
+export function MatchForm({ action, submitLabel, tournaments, leagues, teams, players, operators, match, builder = {}, submissionId, defaults = {} }: MatchFormProps) {
   const oscl = leagues.find((league) => league.slug === "oscl");
   const initial: MatchBuilderInitial = {
     format: match?.format || 5,
@@ -57,6 +60,7 @@ export function MatchForm({ action, submitLabel, tournaments, leagues, teams, pl
 
   return (
     <form action={action} className="grid gap-4">
+      {submissionId ? <input type="hidden" name="submissionId" value={submissionId} /> : null}
       <div className="form-section" style={{ borderTop: 0, paddingTop: 0 }}>
         <h3>Match</h3>
         <div className="grid gap-3 md:grid-cols-2">
@@ -64,7 +68,7 @@ export function MatchForm({ action, submitLabel, tournaments, leagues, teams, pl
             <input className="input" name="title" defaultValue={match?.title || ""} placeholder="Week 3 · Upper semifinal" />
           </Field>
           <Field label="Played at">
-            <input className="input" type="datetime-local" name="playedAt" defaultValue={dateTimeInput(match?.playedAt)} />
+            <input className="input" type="datetime-local" name="playedAt" defaultValue={dateTimeInput(match?.playedAt || defaults.playedAt)} />
           </Field>
         </div>
         <div className="grid gap-3 md:grid-cols-3">

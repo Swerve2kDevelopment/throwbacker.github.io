@@ -79,6 +79,7 @@ export const playerSchema = z.object({
   avatarUrl: nullableString,
   currentTeamId: nullableId,
   realName: nullableString,
+  inGameName: nullableString,
   role: nullableString,
   status: nullableString,
   dateOfBirth: nullableDate,

@@ -53,6 +53,9 @@ export default async function AdminPlayersPage({
                 <input className="input" name="realName" />
               </Field>
             </div>
+            <Field label="In-game name">
+              <input className="input" name="inGameName" placeholder="Exact username shown on the scoreboard" />
+            </Field>
             <div className="grid gap-3 md:grid-cols-2">
               <Field label="Role">
                 <input className="input" name="role" placeholder="Entry, Support, IGL" />

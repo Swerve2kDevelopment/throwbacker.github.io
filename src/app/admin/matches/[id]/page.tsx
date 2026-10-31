@@ -37,7 +37,7 @@ export default async function AdminEditMatchPage({
     prisma.tournament.findMany({ orderBy: { startDate: "desc" }, select: { id: true, name: true } }),
     prisma.league.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, shortName: true, slug: true } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tag: true, logoUrl: true } }),
-    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true } }),
+    prisma.player.findMany({ orderBy: { displayName: "asc" }, select: { id: true, displayName: true, realName: true, avatarUrl: true, currentTeamId: true, aliases: true, inGameName: true } }),
     prisma.operatorIcon.findMany({ orderBy: { name: "asc" }, select: { name: true, iconPath: true } })
   ]);
 
@@ -51,7 +51,7 @@ export default async function AdminEditMatchPage({
     const rounds = map && stat.roundsPlayed && stat.roundsPlayed !== map.teamAScore + map.teamBScore ? String(stat.roundsPlayed) : "";
     stats[stat.mapGameId] = {
       ...stats[stat.mapGameId],
-      [stat.playerId]: { k: cell(stat.kills), d: cell(stat.deaths), a: cell(stat.assists), hs: cell(stat.headshots), rating: cell(stat.ratingOverride), rounds }
+      [stat.playerId]: { k: cell(stat.kills), d: cell(stat.deaths), a: cell(stat.assists), hs: cell(stat.headshots), plants: cell(stat.plants), rating: cell(stat.ratingOverride), rounds }
     };
   }
   const sided = (side: "A" | "B") => [

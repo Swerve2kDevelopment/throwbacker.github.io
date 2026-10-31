@@ -1,12 +1,13 @@
 "use client";
 
-import { BarChart3, CalendarDays, Home, KeyRound, Settings, Sparkles, Swords, Trophy, Users } from "lucide-react";
+import { BarChart3, CalendarDays, Home, Inbox, KeyRound, Settings, Sparkles, Swords, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/admin", label: "Dashboard", icon: Home },
   { href: "/admin/matches", label: "Matches", icon: Swords },
+  { href: "/admin/uploads", label: "Tracker uploads", icon: Inbox },
   { href: "/admin/players", label: "Players", icon: Users },
   { href: "/admin/teams", label: "Teams", icon: Trophy },
   { href: "/admin/tournaments", label: "Tournaments", icon: CalendarDays },

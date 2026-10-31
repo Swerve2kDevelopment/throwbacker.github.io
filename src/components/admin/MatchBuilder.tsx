@@ -21,10 +21,11 @@ export type BuilderPlayer = {
   avatarUrl: string | null;
   currentTeamId: string | null;
   aliases: string[];
+  inGameName?: string | null;
 };
 export type BuilderTeam = { id: string; name: string; tag: string | null; logoUrl: string | null };
 export type BuilderOperator = { name: string; iconPath: string | null };
-export type StatCell = { k: string; d: string; a: string; hs: string; rating: string; rounds: string };
+export type StatCell = { k: string; d: string; a: string; hs: string; plants: string; rating: string; rounds: string };
 type Side = "A" | "B";
 type MapRow = { key: string; name: string; a: string; b: string };
 
@@ -44,7 +45,7 @@ export type MatchBuilderInitial = {
   bans: Array<{ operator: string; side: Side | null }>;
 };
 
-const emptyCell: StatCell = { k: "", d: "", a: "", hs: "", rating: "", rounds: "" };
+const emptyCell: StatCell = { k: "", d: "", a: "", hs: "", plants: "", rating: "", rounds: "" };
 const newKey = () => Math.random().toString(36).slice(2, 10);
 
 function initials(name: string) {
@@ -91,7 +92,7 @@ function PlayerSearch({
     const q = normalizeName(query);
     return players
       .filter((player) => !taken.has(player.id))
-      .filter((player) => !q || [player.displayName, player.realName || "", ...player.aliases].some((name) => normalizeName(name).includes(q)))
+      .filter((player) => !q || [player.displayName, player.realName || "", player.inGameName || "", ...player.aliases].some((name) => normalizeName(name).includes(q)))
       .slice(0, 8);
   }, [players, taken, query]);
 
@@ -249,7 +250,7 @@ export function MatchBuilder({
     const rows = parseBulkStats(pasteText);
     const byName = new Map<string, string>();
     for (const player of players) {
-      for (const name of [player.id, player.displayName, ...player.aliases]) {
+      for (const name of [player.id, player.inGameName || "", player.displayName, ...player.aliases]) {
         const key = normalizeName(name);
         if (key && !byName.has(key)) byName.set(key, player.id);
       }
@@ -285,6 +286,7 @@ export function MatchBuilder({
           d: String(row.deaths),
           a: String(row.assists),
           hs: String(row.headshots),
+          plants: row.plants === null ? "" : String(row.plants),
           rating: row.rating === null ? "" : String(row.rating),
           rounds: row.rounds === null ? "" : String(row.rounds)
         }
@@ -320,8 +322,8 @@ export function MatchBuilder({
     .map((map, index) => {
       const lines = [...roster.A, ...roster.B]
         .map((id) => ({ id, cell: stats[map.key]?.[id] }))
-        .filter(({ cell }) => cell && [cell.k, cell.d, cell.a, cell.hs, cell.rating].some((value) => value.trim() !== ""))
-        .map(({ id, cell }) => [id, num(cell!.k), num(cell!.d), num(cell!.a), num(cell!.hs), cell!.rating.trim(), cell!.rounds.trim()].join(" | "));
+        .filter(({ cell }) => cell && [cell.k, cell.d, cell.a, cell.hs, cell.plants || "", cell.rating].some((value) => value.trim() !== ""))
+        .map(({ id, cell }) => [id, num(cell!.k), num(cell!.d), num(cell!.a), num(cell!.hs), cell!.rating.trim(), cell!.rounds.trim(), num(cell!.plants || "")].join(" | "));
       if (!lines.length) return "";
       return statsMaps.length > 1 ? [`# Map ${index + 1}`, ...lines].join("\n") : lines.join("\n");
     })
@@ -556,7 +558,7 @@ export function MatchBuilder({
                 Fill the grid
               </button>
               <span className="form-hint">
-                <code>player | kills | deaths | assists | headshots | rating</code>. Fills the selected map, or use <code># Map 2</code> headings.
+                <code>player | kills | deaths | assists | headshots | rating | rounds | plants</code>. Fills the selected map, or use <code># Map 2</code> headings.
               </span>
             </div>
             {pasteNote ? <span className="form-hint text-metal-text">{pasteNote}</span> : null}
@@ -583,6 +585,7 @@ export function MatchBuilder({
                   <th className="numeric">D</th>
                   <th className="numeric">A</th>
                   <th className="numeric">HS</th>
+                  <th className="numeric">Plants</th>
                   <th className="numeric">Rating</th>
                   {showRounds ? <th className="numeric">Rounds</th> : null}
                   <th className="numeric">K/D</th>
@@ -602,7 +605,7 @@ export function MatchBuilder({
                 return (
                   <tbody key={side}>
                     <tr className="mb-side-row">
-                      <td colSpan={showRounds ? 8 : 7}>
+                      <td colSpan={showRounds ? 9 : 8}>
                         <span className="mb-side-badge">{side}</span> {teamName(side)}
                         <span className="ml-2 text-metal-muted">
                           {totals.k}/{totals.d}/{totals.a}
@@ -612,7 +615,7 @@ export function MatchBuilder({
                     {rows.map((player) => {
                       const cell = stats[mapKey]?.[player.id] || emptyCell;
                       const kd = cell.k !== "" && cell.d !== "" ? (num(cell.d) ? (num(cell.k) / num(cell.d)).toFixed(2) : num(cell.k).toFixed(2)) : "–";
-                      const fields: Array<keyof StatCell> = showRounds ? ["k", "d", "a", "hs", "rating", "rounds"] : ["k", "d", "a", "hs", "rating"];
+                      const fields: Array<keyof StatCell> = showRounds ? ["k", "d", "a", "hs", "plants", "rating", "rounds"] : ["k", "d", "a", "hs", "plants", "rating"];
                       return (
                         <tr key={player.id}>
                           <td>

@@ -142,6 +142,7 @@ export async function createPlayer(input: PlayerInput) {
       avatarUrl: discordProfile.avatarUrl,
       currentTeamId: input.currentTeamId || null,
       realName: input.realName || null,
+      inGameName: input.inGameName || null,
       role: input.role || null,
       status: input.status || null,
       dateOfBirth: input.dateOfBirth || null,
@@ -176,6 +177,7 @@ export async function updatePlayer(id: string, input: PlayerInput) {
       nationality: input.nationality || null,
       avatarUrl,
       realName: input.realName || null,
+      inGameName: input.inGameName || null,
       role: input.role || null,
       status: input.status || null,
       dateOfBirth: input.dateOfBirth || null,
@@ -341,13 +343,13 @@ async function syncMatchParticipants(matchId: string, teamAPlayerIds: string[], 
 
 async function playerLookup() {
   const players = await prisma.player.findMany({
-    select: { id: true, displayName: true, slug: true, aliases: true, discordUsername: true, currentTeamId: true }
+    select: { id: true, displayName: true, slug: true, aliases: true, discordUsername: true, currentTeamId: true, inGameName: true }
   });
   const byName = new Map<string, string>();
   const teamById = new Map<string, string | null>();
   for (const player of players) {
     teamById.set(player.id, player.currentTeamId);
-    for (const key of [player.id, player.slug, player.displayName, player.discordUsername || "", ...player.aliases]) {
+    for (const key of [player.id, player.inGameName || "", player.slug, player.displayName, player.discordUsername || "", ...player.aliases]) {
       const normalized = normalizeName(key);
       if (normalized && !byName.has(normalized)) byName.set(normalized, player.id);
     }
@@ -434,7 +436,8 @@ async function syncBulkMatchStats(matchId: string, input: MatchInput, warnings: 
       assists: row.assists,
       headshots: Math.min(row.headshots, row.kills),
       roundsPlayed: row.rounds ?? mapGame.teamAScore + mapGame.teamBScore,
-      ratingOverride: row.rating
+      ratingOverride: row.rating,
+      ...(row.plants !== null ? { plants: row.plants } : {})
     };
 
     await prisma.playerMapStats.upsert({

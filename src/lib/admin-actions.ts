@@ -24,6 +24,7 @@ import {
 import { getDiscordUserProfile, sendDiscordDm } from "@/lib/discord-bot";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { generateHostKey } from "@/lib/stats-ingest";
 import {
   adminDmSchema,
   adminUserSchema,
@@ -406,6 +407,13 @@ export async function createMatchAction(formData: FormData) {
     matchSchema,
     async (input) => {
       const result = await createMatch(input);
+      const submissionId = String(formData.get("submissionId") || "");
+      if (submissionId) {
+        await prisma.statsSubmission.updateMany({
+          where: { id: submissionId, status: "PENDING" },
+          data: { status: "IMPORTED", matchId: result.match.id, reviewedAt: new Date() }
+        });
+      }
       return { notice: await matchNotice(result, input.announce, "new") };
     },
     "/admin/matches"
@@ -840,4 +848,32 @@ export async function setPlayerOfWeekAction(formData: FormData) {
 
 export async function deletePlayerOfWeekAction(id: string) {
   await runDelete(() => prisma.playerOfWeek.delete({ where: { id } }), "/admin/settings");
+}
+
+export type HostKeyState = { key?: string; label?: string; error?: string };
+
+/** Creates a host API key. The plain key is returned once and never stored. */
+export async function createHostKeyAction(_previous: HostKeyState, formData: FormData): Promise<HostKeyState> {
+  await assertAdminUser();
+  const label = String(formData.get("label") || "").trim().slice(0, 64);
+  if (!label) return { error: "Give the key a label, like the host's name." };
+
+  const { key, keyHash, keyPrefix } = generateHostKey();
+  await prisma.hostApiKey.create({ data: { label, keyHash, keyPrefix } });
+  revalidatePath("/admin/uploads");
+  return { key, label };
+}
+
+export async function revokeHostKeyAction(id: string) {
+  await assertAdminUser();
+  await prisma.hostApiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+  revalidatePath("/admin/uploads");
+  redirect("/admin/uploads?notice=" + encodeURIComponent("Key revoked. Its tracker can no longer upload."));
+}
+
+export async function rejectSubmissionAction(id: string) {
+  await assertAdminUser();
+  await prisma.statsSubmission.update({ where: { id }, data: { status: "REJECTED", reviewedAt: new Date() } });
+  revalidatePath("/admin/uploads");
+  redirect("/admin/uploads?notice=" + encodeURIComponent("Upload rejected."));
 }
