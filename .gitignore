@@ -7,3 +7,6 @@ database.env
 coverage
 dist
 *.tsbuildinfo
+
+# Local MCP tools (Ghidra)
+.mcp.json
