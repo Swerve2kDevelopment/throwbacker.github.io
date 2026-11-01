@@ -161,6 +161,8 @@ export const matchSchema = z.object({
   bulkStatsRaw: z.preprocess(emptyToUndefined, z.string().optional()),
   // Kept as "" when the field is submitted empty so the editor can clear moments.
   keyMomentsRaw: z.string().optional(),
+  // JSON from the match builder: [{ order, rounds }]. Absent means leave stored replays alone.
+  replaysRaw: z.string().optional(),
   maps: z.array(mapInputSchema).optional()
 }).superRefine((value, ctx) => {
   if (value.matchKind === MatchKind.LEAGUE && !value.leagueId) {

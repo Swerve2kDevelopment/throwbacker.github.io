@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MatchKind } from "@prisma/client";
 import { notFound } from "next/navigation";
 
+import { type RoundPlayer, RoundTimeline } from "@/components/match/RoundTimeline";
 import { PlayerCell } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
@@ -12,6 +13,7 @@ import { operatorKey, parseOperatorBan } from "@/lib/match-entry";
 import { getMatchSideName, getMatchSideTag, getMatchTitle } from "@/lib/match-utils";
 import { prisma } from "@/lib/prisma";
 import { attachRegisteredTeam } from "@/lib/registered-teams";
+import { nameKeys, readReplay } from "@/lib/replay";
 import { calculateAggregateStats } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -68,8 +70,18 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
 
   if (!foundMatch) notFound();
   const match = await attachRegisteredTeam(foundMatch);
-  const operatorIcons = await prisma.operatorIcon.findMany();
+  const replayMaps = match.maps.map((map) => ({ id: map.id, mapName: map.mapName, rounds: readReplay(map.replay) })).filter((map) => map.rounds.length);
+  const [operatorIcons, operatorIds] = await Promise.all([
+    prisma.operatorIcon.findMany(),
+    replayMaps.length ? prisma.operatorGameId.findMany() : Promise.resolve([])
+  ]);
   const iconByOperator = new Map(operatorIcons.map((operator) => [operatorKey(operator.name), operator.iconPath]));
+  const operatorById = new Map(operatorIds.map((entry) => [entry.gameId, entry.operator]));
+  // Replays name players by in-game name; link them to site players on any of their names.
+  const roundPlayers = new Map<string, RoundPlayer>();
+  for (const player of [...match.stats.map((stat) => stat.player), ...match.participants.map((participant) => participant.player)]) {
+    for (const key of nameKeys(player)) if (!roundPlayers.has(key)) roundPlayers.set(key, { slug: player.slug, displayName: player.displayName });
+  }
 
   const aggregate = calculateAggregateStats(match.stats);
   const teamAName = getMatchSideName(match, "A");
@@ -92,7 +104,8 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
     .map(([playerId, value]) => ({
       player: value.player,
       side: (value.side || participantSide.get(playerId) || null) as "A" | "B" | null,
-      aggregate: calculateAggregateStats(value.entries)
+      aggregate: calculateAggregateStats(value.entries),
+      teamKills: value.entries.reduce((sum, entry) => sum + entry.teamKills, 0)
     }))
     .sort((a, b) => b.aggregate.rating - a.aggregate.rating);
 
@@ -247,6 +260,22 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                       <th className="numeric">A</th>
                       <th className="numeric">K/D</th>
                       <th className="numeric">HS%</th>
+                      {replayMaps.length ? (
+                        <>
+                          <th className="numeric" title="Opening kills - opening deaths">
+                            Entry
+                          </th>
+                          <th className="numeric" title="Clutches won">
+                            1vX
+                          </th>
+                          <th className="numeric" title="Rounds with a kill, objective, survival or trade">
+                            KOST
+                          </th>
+                          <th className="numeric" title="Team kills">
+                            TK
+                          </th>
+                        </>
+                      ) : null}
                       <th className="numeric">Rating</th>
                     </tr>
                   </thead>
@@ -261,6 +290,18 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                         <td className="numeric">{row.aggregate.assists}</td>
                         <td className="numeric">{formatDecimal(row.aggregate.kd)}</td>
                         <td className="numeric">{formatPercent(row.aggregate.hsPercent)}</td>
+                        {replayMaps.length ? (
+                          <>
+                            <td className="numeric" title={`${row.aggregate.openingKills} opening kills, ${row.aggregate.openingDeaths} opening deaths`}>
+                              {row.aggregate.openingKills}-{row.aggregate.openingDeaths}
+                            </td>
+                            <td className="numeric">{row.aggregate.oneVX}</td>
+                            <td className="numeric">{formatPercent(row.aggregate.kostPercent)}</td>
+                            <td className="numeric" style={row.teamKills ? { color: "#ff6b76" } : undefined}>
+                              {row.teamKills}
+                            </td>
+                          </>
+                        ) : null}
                         <td className={`numeric font-black ${row.aggregate.rating >= 1.2 ? "text-metal-accent" : "text-metal-text"}`}>{formatDecimal(row.aggregate.rating)}</td>
                       </tr>
                     ))}
@@ -273,6 +314,15 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           <EmptyState message="No player stats entered for this match yet." />
         )}
       </section>
+
+      {replayMaps.length ? (
+        <section>
+          <div className="section-heading">
+            <h2>Round by Round</h2>
+          </div>
+          <RoundTimeline maps={replayMaps} sideName={sideName} players={roundPlayers} icons={iconByOperator} idTable={operatorById} />
+        </section>
+      ) : null}
 
       {bans.length || match.mapVetoes.length ? (
         <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">

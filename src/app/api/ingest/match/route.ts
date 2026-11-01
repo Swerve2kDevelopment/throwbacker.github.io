@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { authenticateHost, ingestPayloadSchema, summarizePayload, unmatchedNames } from "@/lib/stats-ingest";
+import { authenticateHost, ingestPayloadSchema, learnOperatorIds, summarizePayload, unmatchedNames } from "@/lib/stats-ingest";
 
 export const dynamic = "force-dynamic";
 
-const MAX_BODY_BYTES = 64 * 1024;
+// Round-by-round data makes a best-of-3 roughly 50 KB.
+const MAX_BODY_BYTES = 512 * 1024;
 const MAX_PENDING_PER_HOUR = 30;
 
 function unauthorized() {
@@ -45,7 +46,8 @@ export async function POST(request: Request) {
       data: { hostKeyId: hostKey.id, payload: JSON.parse(JSON.stringify(payload)), summary: summarizePayload(payload) }
     }),
     unmatchedNames(payload),
-    prisma.hostApiKey.update({ where: { id: hostKey.id }, data: { lastUsedAt: new Date() } })
+    prisma.hostApiKey.update({ where: { id: hostKey.id }, data: { lastUsedAt: new Date() } }),
+    learnOperatorIds(payload)
   ]);
 
   return NextResponse.json({ id: submission.id, status: "pending_review", unmatched }, { status: 201 });

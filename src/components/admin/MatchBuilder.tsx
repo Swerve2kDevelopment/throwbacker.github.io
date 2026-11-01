@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { normalizeName, parseBulkStats } from "@/lib/match-entry";
 import { COMMON_MAPS } from "@/lib/match-utils";
 import { ATTACKERS, DEFENDERS } from "@/lib/operators";
+import type { ReplayRound } from "@/lib/replay";
 
 /**
  * Interactive part of the match form: rosters, maps, a scoreboard grid per map
@@ -43,6 +44,8 @@ export type MatchBuilderInitial = {
   scoreB: number;
   winnerSide: string;
   bans: Array<{ operator: string; side: Side | null }>;
+  /** Replay rounds per map key, carried through to the save untouched. */
+  replays?: Record<string, ReplayRound[]>;
 };
 
 const emptyCell: StatCell = { k: "", d: "", a: "", hs: "", plants: "", rating: "", rounds: "" };
@@ -185,6 +188,7 @@ export function MatchBuilder({
   const [pasteText, setPasteText] = useState("");
   const [pasteNote, setPasteNote] = useState("");
   const [bans, setBans] = useState(initial.bans);
+  const replays = initial.replays || {};
   const [banSide, setBanSide] = useState<Side | null>("A");
   const [opQuery, setOpQuery] = useState("");
   const [opTab, setOpTab] = useState<"attack" | "defence">("attack");
@@ -330,6 +334,8 @@ export function MatchBuilder({
     .filter(Boolean)
     .join("\n\n");
   const operatorBansRaw = bans.map((ban) => (ban.side ? `${ban.side}: ${ban.operator}` : ban.operator)).join("\n");
+  // Replay rounds follow their map by position, the same way mapsRaw orders maps.
+  const replaysRaw = JSON.stringify(namedMaps.map((map, index) => ({ order: index + 1, rounds: replays[map.key] })).filter((entry) => entry.rounds?.length));
 
   // ---- Operators ----
   const iconFor = useMemo(() => new Map(operators.map((operator) => [normalizeName(operator.name), operator.iconPath])), [operators]);
@@ -366,6 +372,7 @@ export function MatchBuilder({
       <textarea name="mapsRaw" value={mapsRaw} readOnly hidden />
       <textarea name="bulkStatsRaw" value={bulkStatsRaw} readOnly hidden />
       <textarea name="operatorBans" value={operatorBansRaw} readOnly hidden />
+      <textarea name="replaysRaw" value={replaysRaw} readOnly hidden />
       <datalist id="mb-maps">
         {COMMON_MAPS.map((map) => (
           <option key={map} value={map} />
@@ -486,6 +493,11 @@ export function MatchBuilder({
               >
                 <Trash2 size={15} />
               </button>
+              {replays[map.key]?.length ? (
+                <span className="mb-replay-note">
+                  Round-by-round data attached ({replays[map.key]!.length} rounds). It shows on the match page and fills opening kills, clutches, team kills and KOST.
+                </span>
+              ) : null}
             </div>
           ))}
           <button

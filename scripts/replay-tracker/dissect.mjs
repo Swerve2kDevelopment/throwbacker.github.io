@@ -9,7 +9,7 @@
  * entity handles (0xF0xxxxxx) instead of names. Handles are matched to names
  * in match.mjs.
  */
-import { readFileSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
 import { zstdDecompressSync } from "node:zlib";
 
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -18,6 +18,11 @@ const KILL_INDICATOR = Buffer.from("22d9133cba", "hex");
 const DEFUSER_TIMER = Buffer.from("22a9c858d9", "hex");
 const SCOREBOARD_KILLS = Buffer.from("1cd2b19d", "hex");
 const SCOREBOARD_ASSISTS = Buffer.from("4d737f9e", "hex");
+const CLOCK = Buffer.from("1f07efc9", "hex");
+const ROOM = Buffer.from("26af9899ca00000000", "hex");
+const ROOM_OWNER = Buffer.from("26af9899ca0100000001001b", "hex");
+const PLAYER_NAME = Buffer.from("225be84728", "hex");
+const PLAYER_OPERATOR = Buffer.from("22a6b1018808", "hex");
 
 /** Most of the Y9S2 map pool, keyed by the header's worldid, named the way the site names maps. */
 const MAPS = {
@@ -78,13 +83,15 @@ function readHeader(buf) {
     const key = readString();
     const value = readString();
     if (key === "playerid") {
-      player = { id: value, name: "", team: 0, operator: "" };
+      player = { id: value, name: "", team: 0, operator: "", operatorId: "" };
       players.push(player);
     } else if (key === "id" || key === "playlistcategory") player = null;
 
     if (player && key === "playername") player.name = value;
     else if (player && key === "team") player.team = Number(value);
     else if (player && key === "rolename") player.operator = value;
+    // The same id the stream uses for each player's operator icon (see readOperators).
+    else if (player && key === "roleimage") player.operatorId = value;
     else if (!player) props[key] = value;
   }
 
@@ -165,22 +172,78 @@ function readCounters(b, pattern) {
   return out;
 }
 
-/** Returns the planter's handle if a defuser plant completed this round. */
-function readPlant(b) {
-  let planter = null;
+/**
+ * Defuser plant and disable. Both use the same 7s countdown record, naming the
+ * player at the defuser; it reaching 0.00 completes the action. The first
+ * completion is the plant, a second one the defuse.
+ */
+function readDefuser(b) {
+  const done = [];
+  let player = null;
   for (const at of matches(b, DEFUSER_TIMER)) {
     const timer = readString(b, at + DEFUSER_TIMER.length);
     if (!timer.value || timer.value.length > 12) continue;
-    planter = findHandle(b, timer.next, timer.next + 64) || planter;
-    // The countdown reaching 0.00 means the plant finished; anything after is the defuse timer.
-    if (timer.value.startsWith("0.00")) return planter;
+    player = findHandle(b, timer.next, timer.next + 64) || player;
+    if (timer.value.startsWith("0.00") && player) {
+      done.push({ at, handle: player });
+      if (done.length === 2) break;
+    }
   }
-  return null;
+  return { plant: done[0] || null, defuse: done[1] || null };
 }
 
-/** Header only, without decompressing the round. */
+/** The round clock: seconds left in the current phase (prep, action, or the defuser countdown). */
+function readClock(b) {
+  const samples = [];
+  for (const at of matches(b, CLOCK)) samples.push([at, b.readUInt32LE(at + 5)]);
+  return (offset) => {
+    let lo = 0, hi = samples.length - 1, found = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (samples[mid][0] < offset) {
+        found = samples[mid][1];
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    return found;
+  };
+}
+
+/** Which named room each entity (players included) is in, in stream order. */
+function readRooms(b) {
+  const rooms = [];
+  for (const at of matches(b, ROOM)) {
+    const length = b[at + ROOM.length];
+    const room = b.subarray(at + ROOM.length + 1, at + ROOM.length + 1 + length).toString();
+    const owner = at + ROOM.length + 1 + length;
+    if (!room || !b.subarray(owner, owner + ROOM_OWNER.length).equals(ROOM_OWNER)) continue;
+    rooms.push({ at, room, handle: b.readUInt32LE(owner + ROOM_OWNER.length).toString(16) });
+  }
+  return rooms;
+}
+
+/** Each player's operator icon id for the round: the last non-zero value in their name record. */
+function readOperators(b) {
+  const byName = {};
+  for (const at of matches(b, PLAYER_NAME)) {
+    const name = readString(b, at + PLAYER_NAME.length);
+    if (!name.value || name.value.length > 40 || !b.subarray(name.next, name.next + PLAYER_OPERATOR.length).equals(PLAYER_OPERATOR)) continue;
+    const id = b.readBigUInt64LE(name.next + PLAYER_OPERATOR.length);
+    if (id) byName[name.value] = id.toString();
+  }
+  return byName;
+}
+
+/** Header only, read from the start of the file without decompressing the round. */
 export function readRoundHeader(file) {
-  return readHeader(readFileSync(file));
+  const fd = openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(Math.min(fstatSync(fd).size, 2 * 1024 * 1024));
+    readSync(fd, buf, 0, buf.length, 0);
+    return readHeader(buf);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function readRound(file) {
@@ -200,11 +263,23 @@ export function readRound(file) {
     if (update && kill.killer) handleVotes.push({ handle: update.handle, name: kill.killer });
   }
 
+  const clock = readClock(b);
+  const rooms = readRooms(b);
+  const roomOf = (handle, before) => rooms.filter((r) => r.handle === handle && r.at < before).at(-1)?.room || null;
+  const firstRooms = {};
+  for (const r of rooms) firstRooms[r.handle] ??= r.room;
+  const { plant, defuse } = readDefuser(b);
+  const action = (event) => event && { handle: event.handle, at: event.at, clock: clock(event.at), room: roomOf(event.handle, event.at) };
+
   return {
     ...header,
-    kills,
+    kills: kills.map((k) => ({ ...k, clock: clock(k.at), postPlant: Boolean(plant && k.at > plant.at) })),
     handleVotes,
     assists: readCounters(b, SCOREBOARD_ASSISTS).filter((a) => a.handle && a.value > 0),
-    planter: readPlant(b)
+    planter: plant?.handle || null,
+    plant: action(plant),
+    defuse: action(defuse),
+    operators: readOperators(b),
+    firstRooms
   };
 }

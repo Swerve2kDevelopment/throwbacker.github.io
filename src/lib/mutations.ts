@@ -1,10 +1,12 @@
 import type { MatchInput, PlayerInput, StatInput, TeamInput, TournamentInput } from "@/lib/validators";
-import { MatchKind, type Match } from "@prisma/client";
+import { MatchKind, Prisma, type Match } from "@prisma/client";
+import { z } from "zod";
 import { cachePlayerAvatar } from "@/lib/avatar-cache";
 import { getDiscordUserProfile } from "@/lib/discord-bot";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/format";
 import { normalizeName, parseBulkStats, parseKeyMoments } from "@/lib/match-entry";
+import { deriveReplayStats, nameKeys, replayRoundsSchema } from "@/lib/replay";
 import { parseMapRows, selectedIds } from "@/lib/validators";
 
 function cleanSlug(provided: string | undefined, fallback: string) {
@@ -494,6 +496,46 @@ async function syncMatchKeyMoments(matchId: string, raw: string | undefined, war
   if (unknown.length) warnings.push(`Key moments skipped for unknown players: ${unknown.join(", ")}.`);
 }
 
+const replayEntriesSchema = z.array(z.object({ order: z.number().int().min(1), rounds: replayRoundsSchema }));
+
+/**
+ * Stores each map's replay rounds and fills the stats that come from them
+ * (opening kills/deaths, clutches, team kills, defuses, KOST) on the stat
+ * rows the scoreboard just saved.
+ */
+async function syncMatchReplays(matchId: string, raw: string | undefined, warnings: string[]) {
+  if (raw === undefined) return;
+  let entries: z.infer<typeof replayEntriesSchema>;
+  try {
+    entries = replayEntriesSchema.parse(JSON.parse(raw || "[]"));
+  } catch {
+    warnings.push("The round-by-round data couldn't be read, so it was left as it was.");
+    return;
+  }
+
+  const maps = await prisma.mapGame.findMany({ where: { matchId }, orderBy: { order: "asc" } });
+  const statRows = await prisma.playerMapStats.findMany({
+    where: { matchId },
+    select: { id: true, mapGameId: true, player: { select: { displayName: true, inGameName: true, aliases: true, discordUsername: true } } }
+  });
+  const unmatched = new Set<string>();
+
+  for (const map of maps) {
+    const rounds = entries.find((entry) => entry.order === map.order)?.rounds;
+    await prisma.mapGame.update({ where: { id: map.id }, data: { replay: rounds?.length ? rounds : Prisma.DbNull } });
+    if (!rounds?.length) continue;
+
+    const rows = statRows.filter((row) => row.mapGameId === map.id);
+    for (const [name, derived] of deriveReplayStats(rounds)) {
+      const row = rows.find((candidate) => nameKeys(candidate.player).includes(normalizeName(name)));
+      if (row) await prisma.playerMapStats.update({ where: { id: row.id }, data: derived });
+      else unmatched.add(name);
+    }
+  }
+
+  if (unmatched.size) warnings.push(`Round data for ${[...unmatched].join(", ")} didn't match a stat line, so their opening kills and clutches weren't saved.`);
+}
+
 function matchData(input: MatchInput) {
   return {
     tournamentId: input.tournamentId || null,
@@ -526,6 +568,7 @@ export async function createMatch(input: MatchInput): Promise<MatchSaveResult> {
   await replaceMatchMaps(match.id, mapsFromInput(input));
   await syncMatchParticipants(match.id, input.teamAPlayerIds, input.teamBPlayerIds);
   const statsSaved = await syncBulkMatchStats(match.id, input, warnings);
+  await syncMatchReplays(match.id, input.replaysRaw, warnings);
   await syncMatchKeyMoments(match.id, input.keyMomentsRaw, warnings);
   return { match, statsSaved, warnings };
 }
@@ -540,6 +583,7 @@ export async function updateMatch(id: string, input: MatchInput): Promise<MatchS
 
   await syncMatchParticipants(id, input.teamAPlayerIds, input.teamBPlayerIds);
   const statsSaved = await syncBulkMatchStats(id, input, warnings);
+  await syncMatchReplays(id, input.replaysRaw, warnings);
   if (input.keyMomentsRaw !== undefined) {
     await syncMatchKeyMoments(id, input.keyMomentsRaw, warnings);
   }

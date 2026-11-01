@@ -355,6 +355,8 @@ model MapGame {
   winnerTeamId String?
   winnerSide   MatchSide?
   order        Int              @default(1)
+  /// Round-by-round data from a match replay (ReplayRound[] in src/lib/replay.ts).
+  replay       Json?
   match        Match            @relation(fields: [matchId], references: [id], onDelete: Cascade)
   winnerTeam   Team?            @relation("MapWinner", fields: [winnerTeamId], references: [id], onDelete: SetNull)
   stats        PlayerMapStats[]
@@ -405,6 +407,7 @@ model PlayerMapStats {
   oneVX          Int         @default(0)
   openingKills   Int         @default(0)
   openingDeaths  Int         @default(0)
+  teamKills      Int         @default(0)
   roundsPlayed   Int         @default(0)
   kostRounds     Int         @default(0)
   ratingOverride Float?
@@ -436,6 +439,16 @@ model OperatorIcon {
   id        String   @id @default(cuid())
   name      String   @unique
   iconPath  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The game's operator icon id (as seen in match replays) for an operator name.
+/// Defender ids are learned from replay headers; attacker ids are named by an admin.
+model OperatorGameId {
+  gameId    String   @id
+  operator  String
+  source    String   @default("replay")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -52,7 +52,35 @@ export function groupByMatch(dirs) {
   return [...groups].map(([matchId, folders]) => ({ matchId, folders }));
 }
 
-export function readMatch(folders) {
+/** Operator icon ids -> names, learned from round headers (they name the defenders' operators). */
+export function learnOperatorIds(headers) {
+  const ids = {};
+  for (const p of headers.flatMap((h) => h.players)) if (p.operatorId && p.operator) ids[p.operatorId] = p.operator;
+  return ids;
+}
+
+const clockText = (seconds) => (seconds === null || seconds === undefined ? null : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
+
+/** The rooms most defenders first showed up in: where they set up the site. A lone roamer's room doesn't count. */
+function setupRooms(round, defenders, handleOf) {
+  const counts = new Map();
+  for (const name of defenders) {
+    const room = round.firstRooms[handleOf(name)];
+    if (room) counts.set(room, (counts.get(room) || 0) + 1);
+  }
+  const ranked = [...counts].sort((a, b) => b[1] - a[1]);
+  const shared = ranked.filter(([, n]) => n > 1);
+  return (shared.length ? shared : ranked).slice(0, 2).map(([room]) => room);
+}
+
+function endReason({ plant, defuse, winner, attackers, deaths, sizes }) {
+  const defenders = attackers === "A" ? "B" : "A";
+  if (plant) return defuse || winner === defenders ? "defuse" : "detonation";
+  if (winner === attackers || deaths[defenders] >= sizes[defenders]) return "elimination";
+  return deaths[attackers] >= sizes[attackers] ? "elimination" : "time";
+}
+
+export function readMatch(folders, knownOperators = {}) {
   // Read the fullest recording first so its copy of each round wins.
   const sources = folders.map((dir) => ({ dir, files: recFiles(dir) })).sort((a, b) => b.files.length - a.files.length);
   const byNumber = new Map();
@@ -112,6 +140,58 @@ export function readMatch(folders) {
     }
   }
 
+  // ---- Round by round ----
+  const operatorNames = { ...knownOperators, ...learnOperatorIds(rounds) };
+  const sideOf = (name) => (roster.get(name)?.team === 1 ? "B" : "A");
+  const sizes = { A: 0, B: 0 };
+  for (const p of roster.values()) sizes[p.team === 1 ? "B" : "A"]++;
+  const timeline = rounds.map((round) => {
+    const handles = handlesBySource.get(round.source);
+    const handleOf = (name) => [...handles].find(([, n]) => n === name)?.[0];
+    const before = rounds.find((r) => r.roundNumber === round.roundNumber - 1);
+    const previous = before ? before.score : round.roundNumber === 0 ? [0, 0] : null;
+    let winner = previous ? (round.score[0] > previous[0] ? "A" : round.score[1] > previous[1] ? "B" : null) : null;
+
+    const defenderNames = round.players.map((p) => p.name);
+    const attackers = round.players.length ? (round.players[0].team === 1 ? "A" : "B") : null;
+    const deaths = { A: 0, B: 0 };
+    const kills = round.kills.map((k) => {
+      deaths[sideOf(k.target)]++;
+      return {
+        time: clockText(k.clock),
+        killer: k.killer || null,
+        victim: k.target,
+        headshot: k.headshot,
+        teamKill: Boolean(k.killer) && sideOf(k.killer) === sideOf(k.target),
+        postPlant: k.postPlant
+      };
+    });
+    const action = (event) => event && { player: nameOf(round, event.handle) || null, time: clockText(event.clock), room: event.room };
+    const plant = action(round.plant);
+    const defuse = action(round.defuse);
+    const reason = attackers ? endReason({ plant, defuse, winner, attackers, deaths, sizes }) : null;
+    // A round whose neighbour wasn't recorded: work out the winner from how it ended.
+    if (!winner && attackers) winner = reason === "detonation" || (reason === "elimination" && deaths[attackers === "A" ? "B" : "A"] >= sizes[attackers === "A" ? "B" : "A"]) ? attackers : attackers === "A" ? "B" : "A";
+
+    const operators = [...roster.keys()].map((name) => {
+      const header = round.players.find((p) => p.name === name);
+      const id = header?.operatorId || round.operators[name] || null;
+      return { player: name, side: sideOf(name), operator: header?.operator || (id && operatorNames[id]) || null, operatorId: id };
+    });
+
+    return {
+      number: round.roundNumber + 1,
+      winner,
+      attackers,
+      endReason: reason,
+      site: plant?.room || setupRooms(round, defenderNames, handleOf).join(" / ") || null,
+      plant,
+      defuse,
+      kills,
+      operators
+    };
+  });
+
   const mapped = new Set([...handlesBySource.values()].flatMap((m) => [...m.values()]));
   return {
     build: last.build,
@@ -120,8 +200,10 @@ export function readMatch(folders) {
       name: last.map,
       scoreA: last.score[0],
       scoreB: last.score[1],
-      players: [...stats].map(([name, s]) => ({ name, side: roster.get(name)?.team === 1 ? "B" : "A", ...s, rounds: rounds.length }))
+      players: [...stats].map(([name, s]) => ({ name, side: roster.get(name)?.team === 1 ? "B" : "A", ...s, rounds: rounds.length })),
+      rounds: timeline
     },
+    operatorIds: operatorNames,
     rounds: rounds.length,
     matchId: last.matchId,
     folders: sources.map((s) => s.dir),

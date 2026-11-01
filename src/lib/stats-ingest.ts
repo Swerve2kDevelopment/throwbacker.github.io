@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { MatchBuilderInitial, StatCell } from "@/components/admin/MatchBuilder";
 import { normalizeName } from "@/lib/match-entry";
 import { prisma } from "@/lib/prisma";
+import { type ReplayRound, replayRoundsSchema } from "@/lib/replay";
 
 /**
  * Scoreboards sent by a host's in-game stats tracker. Only hosts get an API
@@ -51,7 +52,8 @@ const mapSchema = z.object({
   name: z.string().trim().min(1).max(64),
   scoreA: z.coerce.number().int().min(0).max(99),
   scoreB: z.coerce.number().int().min(0).max(99),
-  players: z.array(playerSchema).min(1).max(16)
+  players: z.array(playerSchema).min(1).max(16),
+  rounds: replayRoundsSchema.optional()
 });
 
 export const ingestPayloadSchema = z.object({
@@ -59,7 +61,9 @@ export const ingestPayloadSchema = z.object({
   playedAt: z.coerce.date().optional(),
   teamA: z.object({ name: z.string().trim().max(64) }).optional(),
   teamB: z.object({ name: z.string().trim().max(64) }).optional(),
-  maps: z.array(mapSchema).min(1).max(7)
+  maps: z.array(mapSchema).min(1).max(7),
+  /** Operator icon id -> name pairs the tracker learned from replay headers. */
+  operatorIds: z.record(z.string().regex(/^\d{1,20}$/), z.string().trim().min(1).max(40)).optional()
 });
 
 export type IngestPayload = z.infer<typeof ingestPayloadSchema>;
@@ -84,6 +88,16 @@ function nameIndex(players: LookupPlayer[]) {
   return byName;
 }
 
+/** Saves header-learned operator ids. Never overwrites an id an admin already named. */
+export async function learnOperatorIds(payload: IngestPayload) {
+  const entries = Object.entries(payload.operatorIds || {});
+  if (!entries.length) return;
+  await prisma.operatorGameId.createMany({
+    data: entries.map(([gameId, operator]) => ({ gameId, operator, source: "replay" })),
+    skipDuplicates: true
+  });
+}
+
 export async function unmatchedNames(payload: IngestPayload) {
   const players = await prisma.player.findMany({ select: { id: true, displayName: true, inGameName: true, discordUsername: true, aliases: true } });
   const byName = nameIndex(players);
@@ -106,9 +120,11 @@ export async function submissionToBuilder(payload: IngestPayload) {
   const roster: Record<"A" | "B", string[]> = { A: [], B: [] };
   const unknown = new Set<string>();
   const stats: Record<string, Record<string, StatCell>> = {};
+  const replays: Record<string, ReplayRound[]> = {};
   const maps = payload.maps.map((map, index) => {
     const key = `upload-${index + 1}`;
     stats[key] = {};
+    if (map.rounds?.length) replays[key] = map.rounds;
     for (const row of map.players) {
       const id = byName.get(normalizeName(row.name));
       if (!id) {
@@ -144,6 +160,7 @@ export async function submissionToBuilder(payload: IngestPayload) {
     teamBPlayerIds: roster.B,
     maps,
     stats,
+    replays,
     scoreA: mapWins.a,
     scoreB: mapWins.b,
     winnerSide: mapWins.a > mapWins.b ? "A" : mapWins.b > mapWins.a ? "B" : ""

@@ -9,6 +9,7 @@ import { announceMatchAction, updateMatchAction } from "@/lib/admin-actions";
 import { getMatchTitle } from "@/lib/match-utils";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { readReplay } from "@/lib/replay";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,8 @@ export default async function AdminEditMatchPage({
             teamBPlayerIds: sided("B").filter((id) => !sided("A").includes(id)),
             maps: match.maps.map((map) => ({ key: map.id, name: map.mapName, a: String(map.teamAScore), b: String(map.teamBScore) })),
             stats,
+            // Without these a save from the editor would drop the round-by-round data.
+            replays: Object.fromEntries(match.maps.map((map) => [map.id, readReplay(map.replay)]).filter(([, rounds]) => rounds.length)),
             bans: match.operatorBans.map((line) => {
               const ban = parseOperatorBan(line);
               return { operator: ban.operator, side: ban.side };

@@ -871,6 +871,22 @@ export async function revokeHostKeyAction(id: string) {
   redirect("/admin/uploads?notice=" + encodeURIComponent("Key revoked. Its tracker can no longer upload."));
 }
 
+/** Names a game operator id seen in replays (attackers aren't named in replay headers). */
+export async function nameOperatorIdAction(formData: FormData) {
+  await assertAdminUser();
+  const gameId = String(formData.get("gameId") || "").trim();
+  const operator = String(formData.get("operator") || "").trim().slice(0, 40);
+  if (!/^\d{1,20}$/.test(gameId) || !operator) redirect("/admin/uploads?error=" + encodeURIComponent("Pick an operator for that id."));
+
+  await prisma.operatorGameId.upsert({
+    where: { gameId },
+    create: { gameId, operator, source: "admin" },
+    update: { operator, source: "admin" }
+  });
+  revalidatePath("/admin/uploads");
+  redirect("/admin/uploads?notice=" + encodeURIComponent(`Saved: ${operator}. Every match with that id now shows it.`) + "#operator-ids");
+}
+
 export async function rejectSubmissionAction(id: string) {
   await assertAdminUser();
   await prisma.statsSubmission.update({ where: { id }, data: { status: "REJECTED", reviewedAt: new Date() } });

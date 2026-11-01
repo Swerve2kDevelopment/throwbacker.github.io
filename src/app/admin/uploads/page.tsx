@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 
 import { AdminForm, AdminStatusBanner } from "@/components/admin/AdminForm";
 import { HostKeyCreator } from "@/components/admin/HostKeyCreator";
-import { rejectSubmissionAction, revokeHostKeyAction } from "@/lib/admin-actions";
+import { nameOperatorIdAction, rejectSubmissionAction, revokeHostKeyAction } from "@/lib/admin-actions";
+import { ATTACKERS, DEFENDERS } from "@/lib/operators";
+import { readReplay } from "@/lib/replay";
 import { absoluteSiteUrl } from "@/lib/site-settings";
 import { assertAdminUser } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { ingestPayloadSchema } from "@/lib/stats-ingest";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +33,64 @@ export default async function AdminUploadsPage({ searchParams }: { searchParams:
   await assertAdminUser();
   const resolvedSearchParams = await searchParams;
 
-  const [pending, recent, keys] = await Promise.all([
+  const [pending, recent, keys, replayMaps, namedIds, icons] = await Promise.all([
     prisma.statsSubmission.findMany({ where: { status: "PENDING" }, include: { hostKey: true }, orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.statsSubmission.findMany({ where: { status: { not: "PENDING" } }, include: { hostKey: true }, orderBy: { reviewedAt: "desc" }, take: 15 }),
-    prisma.hostApiKey.findMany({ orderBy: { createdAt: "desc" }, include: { _count: { select: { submissions: true } } } })
+    prisma.hostApiKey.findMany({ orderBy: { createdAt: "desc" }, include: { _count: { select: { submissions: true } } } }),
+    prisma.mapGame.findMany({ where: { replay: { not: Prisma.DbNull } }, select: { mapName: true, replay: true } }),
+    prisma.operatorGameId.findMany({ orderBy: { operator: "asc" } }),
+    prisma.operatorIcon.findMany({ select: { name: true } })
   ]);
   const endpoint = absoluteSiteUrl("/api/ingest/match") || "/api/ingest/match";
+
+  // Operator ids in saved matches and pending uploads that nobody has named yet, with one example each.
+  const named = new Set(namedIds.map((entry) => entry.gameId));
+  const unknownIds = new Map<string, { count: number; example: string }>();
+  const pendingMaps = pending.flatMap((submission) => {
+    const parsed = ingestPayloadSchema.safeParse(submission.payload);
+    return parsed.success ? parsed.data.maps.map((map) => ({ mapName: map.name, rounds: map.rounds || [] })) : [];
+  });
+  for (const map of [...replayMaps.map((entry) => ({ mapName: entry.mapName, rounds: readReplay(entry.replay) })), ...pendingMaps]) {
+    for (const round of map.rounds) {
+      for (const entry of round.operators) {
+        if (entry.operator || !entry.operatorId || named.has(entry.operatorId)) continue;
+        const seen = unknownIds.get(entry.operatorId) || { count: 0, example: `${entry.player} · ${map.mapName} round ${round.number} (${entry.side === round.attackers ? "attack" : "defence"})` };
+        seen.count++;
+        unknownIds.set(entry.operatorId, seen);
+      }
+    }
+  }
+  const operatorChoices = [...new Set([...ATTACKERS, ...DEFENDERS, ...icons.map((icon) => icon.name)])];
+  const OperatorPicker = ({ gameId, current }: { gameId: string; current?: string }) => (
+    <form action={nameOperatorIdAction} className="flex flex-wrap justify-end gap-2">
+      <input type="hidden" name="gameId" value={gameId} />
+      <select className="input w-44" name="operator" defaultValue={current || ""} required>
+        <option value="" disabled>
+          Pick operator
+        </option>
+        <optgroup label="Attackers">
+          {ATTACKERS.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Defenders">
+          {operatorChoices
+            .filter((name) => !(ATTACKERS as readonly string[]).includes(name))
+            .map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+        </optgroup>
+        {current && !operatorChoices.includes(current) ? <option value={current}>{current}</option> : null}
+      </select>
+      <button className="button" type="submit">
+        Save
+      </button>
+    </form>
+  );
 
   return (
     <div className="grid gap-5">
@@ -99,6 +155,69 @@ export default async function AdminUploadsPage({ searchParams }: { searchParams:
         ) : null}
       </AdminForm>
 
+      <div id="operator-ids">
+        <AdminForm
+          title="Operator ids from replays"
+          description="Replays name the defenders' operators but only give attackers an icon id. Name each new id once and every match that has it shows the operator. Skins can give one operator a few ids."
+        >
+          {unknownIds.size ? (
+            <div className="table-scroll">
+              <table className="wiki-table">
+                <thead>
+                  <tr>
+                    <th>Id</th>
+                    <th className="numeric">Seen</th>
+                    <th>Example</th>
+                    <th className="numeric">Operator</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...unknownIds]
+                    .sort((a, b) => b[1].count - a[1].count)
+                    .map(([gameId, seen]) => (
+                      <tr key={gameId}>
+                        <td>
+                          <code>{gameId}</code>
+                        </td>
+                        <td className="numeric">{seen.count}</td>
+                        <td>{seen.example}</td>
+                        <td>
+                          <OperatorPicker gameId={gameId} />
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-metal-muted">Every operator id in your matches and uploads has a name.</p>
+          )}
+          {namedIds.length ? (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm font-bold">Named ids ({namedIds.length})</summary>
+              <div className="table-scroll mt-2">
+                <table className="wiki-table">
+                  <tbody>
+                    {namedIds.map((entry) => (
+                      <tr key={entry.gameId}>
+                        <td>
+                          <code>{entry.gameId}</code>
+                        </td>
+                        <td>{entry.operator}</td>
+                        <td className="text-metal-muted">{entry.source === "admin" ? "Named by an admin" : "From a replay header"}</td>
+                        <td>
+                          <OperatorPicker gameId={entry.gameId} current={entry.operator} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          ) : null}
+        </AdminForm>
+      </div>
+
       <AdminForm title="Host keys" description="Give a key only to trusted hosts. Their tracker sends it with each upload. Revoke a key if it leaks.">
         <HostKeyCreator />
         <div className="table-scroll mt-3">
@@ -158,6 +277,10 @@ export default async function AdminUploadsPage({ searchParams }: { searchParams:
           <p>
             <code>side</code> is <code>A</code> or <code>B</code>. Players are matched by their in-game name, then display name, Discord username and aliases. Up to 7
             maps and 16 players per map; 30 uploads per key per hour.
+          </p>
+          <p>
+            The replay tracker (<code>scripts/replay-tracker</code>) also sends each map&apos;s <code>rounds</code>: kill feed, plants, defuses, how the round ended and
+            operators. That data drives the round-by-round view and the opening kill, clutch, KOST and team kill stats.
           </p>
           <pre className="overflow-x-auto rounded-md border border-metal-line bg-black/40 p-3 text-xs">{examplePayload}</pre>
         </div>

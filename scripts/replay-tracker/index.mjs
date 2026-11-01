@@ -5,6 +5,7 @@
  *   node scripts/replay-tracker/index.mjs                  newest match, printed only
  *   node scripts/replay-tracker/index.mjs --list           recorded matches with their ids
  *   node scripts/replay-tracker/index.mjs <id>...          one match id (or prefix) per map of a series
+ *   node scripts/replay-tracker/index.mjs ... --rounds     also print the round-by-round breakdown
  *   node scripts/replay-tracker/index.mjs ... --upload     send it (needs OSCL_URL and OSCL_HOST_KEY)
  *
  * Recordings of the same match (other players' views, or a recording split
@@ -16,7 +17,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { readRoundHeader } from "./dissect.mjs";
-import { groupByMatch, readMatch, recFiles } from "./match.mjs";
+import { groupByMatch, learnOperatorIds, readMatch, recFiles } from "./match.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -48,12 +49,16 @@ if (picked.some((g) => !g)) {
   process.exit(1);
 }
 
-const matches = picked.map((g) => readMatch(g.folders));
+// Every header on disk names the defenders' operators, which teaches us their icon ids.
+const knownOperators = learnOperatorIds(folders.flatMap((dir) => recFiles(dir).map(readRoundHeader)));
+const matches = picked.map((g) => readMatch(g.folders, knownOperators));
 const payload = {
   build: matches[0].build,
   playedAt: matches[0].playedAt,
-  maps: matches.map((m) => m.map)
+  maps: matches.map((m) => m.map),
+  operatorIds: Object.assign({}, ...matches.map((m) => m.operatorIds))
 };
+const reasons = { elimination: "eliminated", time: "time ran out", defuse: "defuser disabled", detonation: "defuser detonated" };
 
 for (const [i, m] of matches.entries()) {
   console.error(`Map ${i + 1}: ${m.map.name} ${m.map.scoreA}-${m.map.scoreB}, ${m.rounds} rounds, match ${m.matchId.slice(0, 8)} (${m.folders.map((f) => path.basename(f)).join(" + ")})`);
@@ -63,6 +68,16 @@ for (const [i, m] of matches.entries()) {
   }
   if (m.unmapped.length) console.error(`  Couldn't link ${m.unmapped.join(", ")} to the scoreboard; their assists/plants may be missing`);
   for (const w of m.warnings) console.error(`  Warning: ${w}`);
+  if (flag("--rounds")) {
+    for (const r of m.map.rounds) {
+      const plant = r.plant ? `, planted by ${r.plant.player} in ${r.plant.room || "?"} at ${r.plant.time}` : "";
+      const defuse = r.defuse ? `, disabled by ${r.defuse.player} at ${r.defuse.time}` : "";
+      console.error(`  R${r.number}: ${r.winner || "?"} won (${reasons[r.endReason] || "?"}), ${r.attackers} attacking, site ${r.site || "?"}${plant}${defuse}`);
+      for (const k of r.kills) console.error(`      ${(k.postPlant ? "pp " : "") + (k.time || "?")}  ${k.killer || "(no killer)"} -> ${k.victim}${k.headshot ? " (HS)" : ""}${k.teamKill ? " [TEAM KILL]" : ""}`);
+      const ops = r.operators.map((o) => `${o.player}=${o.operator || `#${o.operatorId || "?"}`}`);
+      console.error(`      ops: ${ops.join(", ")}`);
+    }
+  }
 }
 console.log(JSON.stringify(payload, null, 2));
 
