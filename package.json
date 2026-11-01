@@ -8,10 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio",
-    "db:seed": "prisma db seed",
+    "db:migrate": "node --env-file-if-exists=database.env node_modules/prisma/build/index.js migrate dev",
+    "db:deploy": "node --env-file-if-exists=database.env node_modules/prisma/build/index.js migrate deploy",
+    "db:status": "node --env-file-if-exists=database.env node_modules/prisma/build/index.js migrate status",
+    "db:studio": "node --env-file-if-exists=database.env node_modules/prisma/build/index.js studio",
+    "db:seed": "node --env-file-if-exists=database.env node_modules/prisma/build/index.js db seed",
     "avatars:cache": "tsx scripts/cache-avatars.ts"
   },
   "dependencies": {
