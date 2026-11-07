@@ -2014,7 +2014,7 @@ textarea.input {
 }
 
 .operator-ban-chip img,
-.operator-ban-chip > span {
+.operator-ban-chip .operator-ban-icon {
   display: flex;
   height: 38px;
   width: 38px;
@@ -2027,6 +2027,13 @@ textarea.input {
   font-weight: 760;
   object-fit: contain;
   filter: grayscale(0.25);
+}
+
+.operator-ban-label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
 .operator-ban-chip strong {

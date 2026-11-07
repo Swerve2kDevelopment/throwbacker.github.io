@@ -341,9 +341,9 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
                         // eslint-disable-next-line @next/next/no-img-element
                         <img alt="" src={icon} />
                       ) : (
-                        <span>{ban.operator.slice(0, 2).toUpperCase()}</span>
+                        <span className="operator-ban-icon">{ban.operator.slice(0, 2).toUpperCase()}</span>
                       )}
-                      <span className="min-w-0">
+                      <span className="operator-ban-label">
                         <strong>{ban.operator}</strong>
                         {by ? <em>{by}</em> : null}
                       </span>
